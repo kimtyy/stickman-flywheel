@@ -161,8 +161,7 @@ button[data-baseweb="tab"][aria-selected="true"] {
 
 /* 모든 입력창 배경 명암(#0F172A)과 테두리 대비 대폭 강화 */
 .stTextInput > div > div > input,
-.stTextArea > div > div > textarea,
-.stSelectbox > div > div {
+.stTextArea > div > div > textarea {
     background-color: #0F172A !important;
     border: 1.5px solid rgba(56, 189, 248, 0.35) !important;
     border-radius: 12px !important;
@@ -174,8 +173,7 @@ button[data-baseweb="tab"][aria-selected="true"] {
 }
 
 .stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus,
-.stSelectbox > div > div:focus-within {
+.stTextArea > div > div > textarea:focus {
     border-color: #38BDF8 !important;
     box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
     background-color: #131D33 !important;
@@ -394,24 +392,30 @@ div[data-baseweb="textarea"] textarea:disabled {
     cursor: default !important;
 }
 
-/* 2. 최상단 에피소드 선택기 및 모든 selectbox 내부 텍스트 쨍하게 */
+/* 2. 최상단 에피소드 선택기, BGM 선택, 공개 범위 등 모든 st.selectbox 완벽 고대비 순백색 */
+div[data-testid="stSelectbox"],
+.stSelectbox {
+    color: #FFFFFF !important;
+}
+
+/* 셀렉트박스 입력창 프레임 배경 및 테두리 */
+div[data-testid="stSelectbox"] > div,
+div[data-testid="stSelectbox"] [class*="e1fp86qc0"],
 div[data-testid="stSelectbox"] div[data-baseweb="select"],
+.stSelectbox [class*="e1fp86qc0"],
 .stSelectbox div[data-baseweb="select"] {
     background-color: #1E293B !important;
-    border-radius: 8px !important;
+    border: 1.5px solid #38BDF8 !important;
+    border-radius: 10px !important;
 }
-div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-.stSelectbox div[data-baseweb="select"] > div {
-    background-color: #1E293B !important;
-    border: 1px solid #38BDF8 !important;
-    border-radius: 8px !important;
-}
-div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
-div[data-testid="stSelectbox"] div[data-baseweb="select"] div[aria-selected="true"],
-div[data-testid="stSelectbox"] div[role="combobox"],
-div[data-testid="stSelectbox"] div[role="combobox"] *,
-div[data-testid="stSelectbox"] [data-baseweb="select"] *,
-.stSelectbox div[data-baseweb="select"] * {
+
+/* Streamlit 1.64+ 및 모든 버전의 셀렉트박스 내부 텍스트 (input, span, div 전체) 순백색 강제 */
+div[data-testid="stSelectbox"] input,
+div[data-testid="stSelectbox"] [class*="e1fp86qc1"],
+div[data-testid="stSelectbox"] span,
+div[data-testid="stSelectbox"] p,
+div[data-testid="stSelectbox"] div,
+div[data-testid="stSelectbox"] * {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
     font-size: 15px !important;
@@ -419,27 +423,58 @@ div[data-testid="stSelectbox"] [data-baseweb="select"] *,
     opacity: 1 !important;
 }
 
-/* 3. 플레이스홀더 및 단일 밸류 텍스트 직접 타깃팅 */
-div[data-baseweb="select"] [class*="ValueContainer"] div,
-div[data-baseweb="select"] [class*="singleValue"],
-div[data-baseweb="select"] span {
+.stSelectbox input,
+.stSelectbox [class*="e1fp86qc1"],
+.stSelectbox span,
+.stSelectbox p,
+.stSelectbox div,
+.stSelectbox * {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
     font-size: 15px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+/* 플레이스홀더 */
+div[data-testid="stSelectbox"] input::placeholder,
+.stSelectbox input::placeholder {
+    color: #94A3B8 !important;
+    -webkit-text-fill-color: #94A3B8 !important;
+    opacity: 1 !important;
+}
+
+/* 펼쳐졌을 때의 팝오버 옵션 메뉴 (가상 드롭다운, listbox, option 전체) */
+div[data-testid="stSelectboxVirtualDropdown"],
+div[data-testid="stSelectboxVirtualDropdown"] *,
+div[role="listbox"],
+div[role="listbox"] *,
+div[role="option"],
+div[role="option"] *,
+ul[role="listbox"],
+ul[role="listbox"] *,
+li[role="option"],
+li[role="option"] *,
+ul[data-baseweb="menu"],
+ul[data-baseweb="menu"] *,
+div[data-baseweb="popover"],
+div[data-baseweb="popover"] * {
+    background-color: #1E293B !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
     opacity: 1 !important;
 }
 
-/* 4. 펼쳐졌을 때의 팝오버 메뉴 텍스트 및 배경 */
-ul[data-baseweb="menu"],
-div[data-baseweb="popover"] {
-    background-color: #1E293B !important;
-    border: 1px solid #38BDF8 !important;
-}
-ul[data-baseweb="menu"] li,
-ul[data-baseweb="menu"] li * {
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
+/* 호버되거나 선택된 옵션 항목 */
+div[role="option"][aria-selected="true"],
+div[role="option"]:hover,
+li[role="option"][aria-selected="true"],
+li[role="option"]:hover {
+    background-color: #334155 !important;
+    color: #38BDF8 !important;
+    -webkit-text-fill-color: #38BDF8 !important;
 }
 
 /* Expander 다크 글래스 */
