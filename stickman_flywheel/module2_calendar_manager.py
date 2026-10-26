@@ -224,6 +224,11 @@ class CalendarManager:
                 reminders=morning_popup_reminders
             )
 
+            # candidate의 script 객체를 반드시 PENDING_DIR에 파일로 영구 저장 보장
+            cand_p_path = PENDING_DIR / f"{script.episode_id}.json"
+            if not cand_p_path.exists() and not (APPROVED_DIR / f"{script.episode_id}.json").exists():
+                cand_p_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+
             served_candidates.append({
                 "candidate_no": c_no,
                 "episode_id": script.episode_id,
