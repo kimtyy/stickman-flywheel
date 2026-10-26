@@ -1001,7 +1001,7 @@ def fx_dust(d, x, floor_y, t):
 
 
 def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str,
-               pose_a: str, pose_b: str, t: float) -> None:
+               pose_a: str, pose_b: str, t: float, setting_type: str = "") -> None:
     text = (scene_text or "").lower()
 
     # 1. 📱 스마트폰 소품 (A가 초반 거래 씬에서 손에 쥐고 확인하거나 통화/채팅하는 연출)
@@ -1070,10 +1070,11 @@ def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str
         d.line(spark_pts2, fill=(255, 235, 30), width=4, joint="curve")
         d.text((rx + 24, ant_top - 20), "⚡", font=get_font(28), fill=(255, 225, 0), anchor="mm")
 
-    # 4. 맞춤형 참교육 소품 (10T 강철 당근, 20KG 바벨, 100T 참교육 철퇴/무게추)
+    # 4. 맞춤형 참교육 소품 (황금 VIP 카드, 10T 강철 당근, 20KG 바벨, 100T 참교육 철퇴/무게추)
     is_climax_crush = (pose_b in ("crushed", "fall", "hit") or any(k in text for k in [
         "짓눌", "깔려", "납작", "개구리", "살려", "사람 살려", "으아악", "200kg", "100kg", "참교육"
     ]))
+    has_convenience_theme = (setting_type == "convenience_store") or any(k in text for k in ["편의점", "카드", "적립", "포스기", "알바", "골드"])
     has_barbell_theme = any(k in text for k in [
         "바벨", "원판", "스쿼트", "랙", "덤벨", "벤치", "쇠질", "무반동", "세트", "중량"
     ])
@@ -1082,7 +1083,20 @@ def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str
     if is_climax_crush:
         bx = fig_b["hip"][0] + 15
         by = FLOOR_Y - 45
-        if has_carrot_theme or "당근" in text:
+        if has_convenience_theme:
+            # [거대 100TON 황금 참교육 VIP 적립 카드 슬랩스틱 그래픽]
+            card_w, card_h = 360, 230
+            card_x0, card_y0 = bx - card_w // 2, FLOOR_Y - card_h - 20
+            card_x1, card_y1 = bx + card_w // 2, FLOOR_Y - 20
+            d.rounded_rectangle((card_x0 + 8, card_y0 + 8, card_x1 + 8, card_y1 + 8), radius=16, fill=(15, 18, 25))
+            d.rounded_rectangle((card_x0, card_y0, card_x1, card_y1), radius=16, fill=(245, 190, 35), outline=(255, 240, 160), width=5)
+            d.rounded_rectangle((card_x0 + 30, card_y0 + 35, card_x0 + 85, card_y0 + 75), radius=6, fill=(215, 160, 20), outline=(130, 95, 10), width=2)
+            d.rectangle((card_x0, card_y0 + 95, card_x1, card_y0 + 130), fill=(40, 42, 50))
+            d.text((bx + 30, card_y0 + 55), "VIP 참교육", font=get_font(28), fill=(30, 25, 15), anchor="mm")
+            d.text((bx, card_y0 + 112), "100 TON CRUSH", font=get_font(24), fill=(255, 215, 0), anchor="mm")
+            d.text((bx, card_y0 + 175), "무한 적립 완료", font=get_font(30), fill=(180, 25, 25), anchor="mm")
+            fx_dust(d, bx, FLOOR_Y, t)
+        elif has_carrot_theme or "당근" in text:
             # [10T 강철 당근 참교육 슬랩스틱 그래픽]
             leaf_base_y = FLOOR_Y - 370
             # 초록색 당근 잎사귀 3개
@@ -1183,34 +1197,239 @@ def wrap_text(text: str, font, maxw: float) -> List[str]:
     return [ln for ln in lines if ln]
 
 
-def make_background(color, pose: str, scene_text: str = "") -> Image.Image:
-    text = (scene_text or "").lower()
+# =====================================================================
+# 6. 장소 키워드 자동 감지 엔진 & 배경 프리셋 벡터 드로잉
+# =====================================================================
+def detect_setting(setting_text: str = "", title: str = "", scene_texts: Optional[List[str]] = None) -> str:
+    """대본의 배경 설정, 제목, 씬 텍스트를 종합 분석하여 장소 핵심 키워드 자동 감지."""
+    combined = f"{setting_text} {title} " + " ".join(scene_texts or [])
+    text = combined.lower()
+
+    # 1. 편의점 / 매장 서비스 (카운터, 알바, POS기, 진열대 등)
+    convenience_keywords = [
+        "편의점", "알바", "카운터", "포스기", "단말기", "계산대", "바코드", "담배", 
+        "삼각김밥", "적립", "영수증", "교대", "cu", "gs25", "세븐일레븐", "이마트24", 
+        "편의점손님", "편의점알바", "폐기", "라면온수기"
+    ]
+    convenience_score = sum(1 for k in convenience_keywords if k in text)
+
+    # 2. 헬스장 / 피트니스 (바벨, 덤벨, 랙, 쇠질 등)
+    gym_keywords = [
+        "헬스장", "헬스", "쇠질", "바벨", "덤벨", "스쿼트", "벤치프레스", "벤치", 
+        "원판", "득근", "무반동", "세트독점", "세트 사이", "기구 독점", "pt", 
+        "트레이너", "인바디", "헬창", "스트랩"
+    ]
+    gym_score = sum(1 for k in gym_keywords if k in text)
+
+    # 3. 주차장 / 도로 / 교통 (주차선, 아스팔트, 차단기 등)
+    parking_keywords = [
+        "주차장", "주차선", "문콕", "칼치기", "아스팔트", "차단기", "골목", "보복운전", 
+        "난폭운전", "신호위반", "횡단보도", "차도", "접촉사고", "주차빌런", "2칸주차", "주차"
+    ]
+    parking_score = sum(1 for k in parking_keywords if k in text)
+
+    # 4. 당근마켓 / 중고 직거래 / 지하철역 앞 (단순 '역대급' 등 부분일치 방지)
+    subway_keywords = [
+        "당근마켓", "당근", "중고거래", "네고", "직거래", "지하철역", "4번출구", 
+        "출구 앞", "매너온도", "쿨거래", "차비"
+    ]
+    subway_score = sum(1 for k in subway_keywords if k in text)
+
+    # 5. 직장 / 사무실 (파티션, 회의실, 복사기 등)
+    office_keywords = [
+        "사무실", "직장", "회사", "부장", "팀장", "대리", "사원", "야근", "탕비실", 
+        "복사기", "회의실", "파티션", "월급", "출근", "퇴근", "결재", "사내", "꼰대"
+    ]
+    office_score = sum(1 for k in office_keywords if k in text)
+
+    # 6. 아파트 / 주거 실내 / 층간소음 (거실, 발망치, 우퍼 등)
+    apartment_keywords = [
+        "층간소음", "윗집", "아랫집", "발망치", "우퍼", "아파트", "거실", "천장", 
+        "소파", "슬리퍼", "안방", "복도"
+    ]
+    apartment_score = sum(1 for k in apartment_keywords if k in text)
+
+    scores = {
+        "convenience_store": convenience_score,
+        "gym": gym_score,
+        "parking_road": parking_score,
+        "subway_street": subway_score,
+        "office": office_score,
+        "apartment": apartment_score,
+    }
+
+    best_setting = max(scores, key=scores.get)
+    if scores[best_setting] > 0:
+        return best_setting
+    return "default_modern"
+
+
+def make_background(color, pose: str, scene_text: str = "", setting_type: str = "") -> Image.Image:
+    """장소 키워드 프리셋에 따라 고품질 벡터/오브젝트 레이어가 합성된 완성형 무대 배경을 생성."""
+    if not setting_type:
+        setting_type = detect_setting(scene_text)
     img = Image.new("RGB", (W, H), color)
     d = ImageDraw.Draw(img)
 
-    is_carrot = any(k in text for k in ["당근", "중고", "네고", "지하철", "거래", "출구", "역", "봉투", "차비", "쿨거래", "매너"])
-    is_gym = any(k in text for k in ["헬스", "스쿼트", "바벨", "덤벨", "쇠질", "무반동", "세트", "중량"])
+    if setting_type == "convenience_store":
+        # [1. 편의점 24시 내부 벡터 배경]
+        # 천장 및 LED 라이트 패널
+        d.rectangle((0, 0, W, 220), fill=(35, 38, 48))
+        for lx in (220, 540, 860):
+            d.rounded_rectangle((lx - 120, 80, lx + 120, 110), radius=6, fill=(245, 250, 255), outline=(200, 225, 255), width=2)
+            d.polygon([(lx - 150, 110), (lx + 150, 110), (lx + 240, 360), (lx - 240, 360)], fill=(48, 55, 72))
 
-    if is_carrot:
-        # [야외 당근마켓 / 지하철역 4번 출구 앞 노을빛 도심 거리 배경]
+        # 바닥: 유광 편의점 타일
+        d.rectangle((0, FLOOR_Y, W, H), fill=(230, 234, 242))
+        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 16), fill=(60, 65, 78))
+        tile_w, tile_h = 108, 68
+        for r, ty in enumerate(range(FLOOR_Y + 16, H, tile_h)):
+            d.line([(0, ty), (W, ty)], fill=(205, 210, 222), width=3)
+            shift = 54 if r % 2 == 1 else 0
+            for tx in range(shift, W + 108, tile_w):
+                d.line([(tx, ty), (tx, min(H, ty + tile_h))], fill=(205, 210, 222), width=3)
+
+        # 좌측: 음료 쇼케이스 대형 냉장고 (x: 40 ~ 440, y: 220 ~ FLOOR_Y)
+        d.rounded_rectangle((40, 220, 440, FLOOR_Y), radius=12, fill=(22, 32, 45), outline=(130, 145, 165), width=6)
+        d.rectangle((44, 224, 436, 290), fill=(20, 130, 220)) # 브랜드 헤더
+        d.rectangle((54, 300, 426, FLOOR_Y - 20), fill=(28, 55, 78)) # 내부 조명
+        for sy in range(380, FLOOR_Y - 60, 180):
+            d.rectangle((54, sy, 426, sy + 14), fill=(160, 175, 195))
+            can_colors = [(235, 45, 45), (45, 180, 75), (255, 210, 30), (30, 130, 240), (255, 255, 255)]
+            for cx in range(70, 410, 38):
+                cc = can_colors[(cx // 38) % len(can_colors)]
+                d.rounded_rectangle((cx, sy - 85, cx + 28, sy), radius=4, fill=cc, outline=(20, 30, 40), width=2)
+        # 유리 반사광
+        d.polygon([(60, 300), (130, 300), (70, FLOOR_Y - 20), (54, FLOOR_Y - 20)], fill=(50, 85, 115))
+        d.polygon([(250, 300), (320, 300), (190, FLOOR_Y - 20), (120, FLOOR_Y - 20)], fill=(50, 85, 115))
+
+        # 우측: 스낵 및 식품 진열대 (x: 520 ~ 1040, y: 240 ~ FLOOR_Y)
+        d.rounded_rectangle((520, 240, 1040, FLOOR_Y), radius=10, fill=(35, 40, 52), outline=(100, 110, 130), width=4)
+        d.rectangle((524, 244, 1036, 300), fill=(235, 110, 30))
+        for sy in range(390, FLOOR_Y - 40, 200):
+            d.rectangle((530, sy, 1030, sy + 16), fill=(140, 150, 168))
+            snack_colors = [(255, 80, 80), (255, 180, 40), (80, 200, 120), (160, 80, 220), (255, 220, 50)]
+            for sx in range(545, 1010, 55):
+                sc = snack_colors[(sx // 55) % len(snack_colors)]
+                d.rounded_rectangle((sx, sy - 110, sx + 44, sy), radius=8, fill=sc, outline=(30, 35, 45), width=2)
+                d.line([(sx + 8, sy - 65), (sx + 36, sy - 65)], fill=(255, 255, 255), width=2)
+
+        # 계산대 카운터 기본 바탕 (x: 180 ~ 560, y: 1040 ~ FLOOR_Y)
+        d.rounded_rectangle((180, 1070, 560, FLOOR_Y), radius=8, fill=(32, 40, 55), outline=(90, 105, 130), width=4)
+        d.rounded_rectangle((160, 1040, 580, 1075), radius=8, fill=(245, 245, 250), outline=(160, 175, 195), width=3)
+        return img
+
+    elif setting_type == "gym":
+        # [2. 헬스장 피트니스 배경]
+        d.rectangle((0, 0, W, FLOOR_Y), fill=(40, 44, 52))
+        # 고무 매트 바닥
+        d.rectangle((0, FLOOR_Y, W, H), fill=(28, 30, 36))
+        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 14), fill=(245, 200, 30)) # 옐로우 안전선
+        for gy in range(FLOOR_Y + 14, H, 64):
+            d.line([(0, gy), (W, gy)], fill=(18, 20, 24), width=3)
+            for gx in range(0, W, 80):
+                d.line([(gx, gy), (gx, min(H, gy + 64))], fill=(18, 20, 24), width=3)
+        # 대형 전신 거울
+        d.rounded_rectangle((70, 160, W - 70, FLOOR_Y - 40), radius=10, fill=(62, 70, 84), outline=(190, 195, 205), width=8)
+        for sx in (240, 580, 860):
+            d.polygon([(sx, 160), (sx + 80, 160), (sx - 70, FLOOR_Y - 40), (sx - 150, FLOOR_Y - 40)], fill=(78, 88, 106))
+        # 바벨 랙 & 20kg 원판 (좌측)
+        d.rectangle((90, 480, 110, FLOOR_Y - 40), fill=(40, 44, 52), outline=(120, 130, 145), width=2)
+        d.rectangle((240, 480, 260, FLOOR_Y - 40), fill=(40, 44, 52), outline=(120, 130, 145), width=2)
+        d.line([(70, 720), (280, 720)], fill=(180, 190, 205), width=10)
+        d.rounded_rectangle((95, 660, 115, 780), radius=6, fill=(220, 40, 40))
+        d.rounded_rectangle((235, 660, 255, 780), radius=6, fill=(220, 40, 40))
+        # 덤벨 거치대 (우측)
+        d.rectangle((820, 560, 1000, 576), fill=(90, 95, 105))
+        d.rectangle((820, 760, 1000, 776), fill=(90, 95, 105))
+        for dbx in (850, 910, 970):
+            d.rounded_rectangle((dbx - 14, 545, dbx + 14, 560), radius=4, fill=(25, 27, 32))
+            d.rounded_rectangle((dbx - 14, 745, dbx + 14, 760), radius=4, fill=(25, 27, 32))
+        return img
+
+    elif setting_type == "parking_road":
+        # [3. 주차장 / 도로 배경]
+        d.rectangle((0, 0, W, FLOOR_Y), fill=(45, 48, 56))
+        # 콘크리트 벽면 및 녹색 안내 띠
+        d.rectangle((0, FLOOR_Y - 280, W, FLOOR_Y - 170), fill=(35, 125, 75))
+        # 주차장 기둥 (x: 80~220)
+        d.rectangle((80, 260, 220, FLOOR_Y), fill=(55, 60, 70), outline=(25, 28, 35), width=4)
+        d.rounded_rectangle((105, 380, 195, 470), radius=8, fill=(25, 28, 35), outline=(255, 255, 255), width=3)
+        d.text((150, 425), "B2", font=get_font(42), fill=(255, 255, 255), anchor="mm")
+        # 아스팔트 바닥
+        d.rectangle((0, FLOOR_Y, W, H), fill=(38, 40, 46))
+        for px in range(140, W + 100, 290):
+            d.line([(px, FLOOR_Y), (px - 140, H)], fill=(255, 215, 30), width=12) # 노란 주차 구획선
+            d.rounded_rectangle((px - 50, FLOOR_Y + 70, px + 50, FLOOR_Y + 95), radius=4, fill=(200, 205, 215), outline=(80, 85, 95), width=2)
+        # 차단기 바 (우측)
+        d.rectangle((880, 360, 920, FLOOR_Y), fill=(230, 80, 40))
+        for by in range(400, 850, 50):
+            d.polygon([(920, by), (W, by - 60), (W, by - 30), (920, by + 30)], fill=(255, 255, 255))
+        return img
+
+    elif setting_type == "office":
+        # [4. 사무실 / 직장 배경]
+        d.rectangle((0, 0, W, FLOOR_Y), fill=(50, 55, 66))
+        # 화이트보드
+        d.rounded_rectangle((100, 220, 460, 680), radius=10, fill=(245, 248, 255), outline=(140, 150, 165), width=4)
+        d.line([(140, 620), (420, 620)], fill=(40, 45, 55), width=3)
+        d.line([(140, 620), (140, 280)], fill=(40, 45, 55), width=3)
+        chart_pts = [(160, 580), (220, 520), (280, 440), (340, 470), (400, 320)]
+        d.line(chart_pts, fill=(235, 60, 60), width=5)
+        # 파티션 데스크 (우측 x: 520~1020)
+        d.rounded_rectangle((520, 380, 1020, FLOOR_Y), radius=8, fill=(65, 80, 102), outline=(130, 145, 170), width=4)
+        d.rectangle((540, 780, 1000, 820), fill=(35, 40, 52))
+        d.rounded_rectangle((600, 640, 760, 780), radius=6, fill=(20, 22, 28), outline=(100, 110, 130), width=3)
+        d.rectangle((610, 650, 750, 755), fill=(30, 110, 200))
+        # 회색 카펫 타일 바닥
+        d.rectangle((0, FLOOR_Y, W, H), fill=(65, 68, 76))
+        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 12), fill=(40, 42, 48))
+        for cy in range(FLOOR_Y + 12, H, 58):
+            d.line([(0, cy), (W, cy)], fill=(48, 50, 58), width=2)
+            for cx in range(0, W, 90):
+                d.line([(cx, cy), (cx, min(H, cy + 58))], fill=(48, 50, 58), width=2)
+        return img
+
+    elif setting_type == "apartment":
+        # [5. 아파트 / 주거 실내 배경]
+        d.rectangle((0, 0, W, FLOOR_Y), fill=(58, 56, 68))
+        # 통창문 야경
+        d.rounded_rectangle((100, 180, 500, 880), radius=10, fill=(18, 22, 34), outline=(180, 185, 195), width=6)
+        for bx in range(120, 480, 55):
+            bh = 150 + ((bx * 7) % 200)
+            d.rectangle((bx, 880 - bh, bx + 45, 880), fill=(30, 36, 52))
+            for wy in range(880 - bh + 20, 860, 32):
+                d.rectangle((bx + 12, wy, bx + 32, wy + 16), fill=(255, 230, 110) if (bx + wy) % 3 == 0 else (120, 190, 240))
+        # 액자
+        d.rounded_rectangle((620, 240, 940, 560), radius=8, fill=(230, 225, 215), outline=(180, 140, 90), width=8)
+        d.ellipse((680, 300, 880, 500), fill=(235, 100, 80))
+        # 헤링본 우드 바닥
+        d.rectangle((0, FLOOR_Y, W, H), fill=(135, 95, 60))
+        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 14), fill=(80, 50, 30))
+        for hy in range(FLOOR_Y + 14, H, 45):
+            d.line([(0, hy), (W, hy)], fill=(95, 65, 40), width=2)
+            for hx in range(0, W + 60, 60):
+                d.line([(hx, hy), (hx + 30, min(H, hy + 45))], fill=(105, 75, 45), width=2)
+        return img
+
+    elif setting_type == "subway_street":
+        # [6. 야외 당근마켓 / 지하철역 4번 출구 앞 노을빛 도심 거리 배경]
         # 1. 하늘 그라디언트 (상단 딥 네이비 퍼플 -> 중간 노을빛 마젠타/오렌지 -> 지평선 웜 피치)
         for y in range(0, FLOOR_Y):
             ratio = y / float(FLOOR_Y)
             if ratio < 0.45:
-                # 딥 네이비 퍼플 -> 노을빛 마젠타
                 k = ratio / 0.45
                 r = int(24 * (1 - k) + 115 * k)
                 g = int(22 * (1 - k) + 48 * k)
                 b = int(48 * (1 - k) + 85 * k)
             else:
-                # 노을빛 마젠타 -> 따뜻한 노을 오렌지/피치
                 k = (ratio - 0.45) / 0.55
                 r = int(115 * (1 - k) + 245 * k)
                 g = int(48 * (1 - k) + 140 * k)
                 b = int(85 * (1 - k) + 80 * k)
             d.line([(0, y), (W, y)], fill=(r, g, b))
 
-        # 2. 먼 도심 스카이라인 실루엣 (Layer 1 - 원경 빌딩군)
+        # 2. 먼 도심 스카이라인 실루엣 (Layer 1)
         rnd_bldg = random.Random(42)
         bx = 0
         while bx < W:
@@ -1230,7 +1449,6 @@ def make_background(color, pose: str, scene_text: str = "") -> Image.Image:
             bh = rnd_bldg2.randint(140, 290)
             by = FLOOR_Y - bh
             d.rectangle((bx, by, bx + bw, FLOOR_Y), fill=(52, 38, 68))
-            # 아파트 창문 (노란/시안 불빛)
             for wy in range(by + 20, FLOOR_Y - 40, 36):
                 for wx in range(bx + 14, bx + bw - 14, 28):
                     if rnd_bldg2.random() < 0.42:
@@ -1243,43 +1461,33 @@ def make_background(color, pose: str, scene_text: str = "") -> Image.Image:
             d.ellipse((tx - 65, FLOOR_Y - 140, tx + 65, FLOOR_Y - 20), fill=(26, 36, 42))
             d.ellipse((tx - 45, FLOOR_Y - 180, tx + 45, FLOOR_Y - 70), fill=(26, 36, 42))
 
-        # 5. 지하철역 4번 출구 폴대 간판 (Iconic Subway Exit 4 Pole)
+        # 5. 지하철역 4번 출구 폴대 간판
         pole_x = 940
         pole_top = FLOOR_Y - 380
-        # 메탈 기둥
         d.rectangle((pole_x - 10, pole_top + 100, pole_x + 10, FLOOR_Y), fill=(45, 50, 60), outline=(20, 22, 28), width=2)
-        # 상단 사각 간판 박스
         d.rounded_rectangle((pole_x - 70, pole_top, pole_x + 70, pole_top + 100), radius=10, fill=(30, 35, 45), outline=(220, 220, 230), width=3)
-        # 지하철 라인 동그라미 심볼 (노란색 3호선)
         d.ellipse((pole_x - 52, pole_top + 14, pole_x - 14, pole_top + 52), fill=(255, 175, 20), outline=(255, 255, 255), width=2)
         d.text((pole_x - 33, pole_top + 33), "4", font=get_font(26), fill=(255, 255, 255), anchor="mm")
-        # 텍스트
         d.text((pole_x + 24, pole_top + 28), "지하철", font=get_font(18), fill=(240, 240, 250), anchor="mm")
         d.text((pole_x + 24, pole_top + 52), "4번출구", font=get_font(20), fill=(255, 225, 40), anchor="mm")
-        # 하단 화살표
         d.polygon([(pole_x - 16, pole_top + 78), (pole_x + 16, pole_top + 78), (pole_x, pole_top + 92)], fill=(255, 255, 255))
 
-        # 6. 클래식 도심 가로등 (좌측 x=140) & 노란빛 원뿔 (Light Cone)
+        # 6. 클래식 도심 가로등 & 조명 콘
         lx = 140
         ly_head = FLOOR_Y - 440
-        # 가로등 조명 빛 원뿔 (가로등에서 바닥으로 은은하게 쏟아지는 조명)
         cone_poly = [
             (lx - 25, ly_head + 30), (lx + 25, ly_head + 30),
             (lx + 260, FLOOR_Y), (lx - 120, FLOOR_Y)
         ]
         d.polygon(cone_poly, fill=(120, 95, 60))
-        # 가로등 기둥
         d.rectangle((lx - 8, ly_head + 30, lx + 8, FLOOR_Y), fill=(35, 38, 44), outline=(15, 18, 22), width=2)
-        # 가로등 갓 및 등
         d.polygon([(lx - 45, ly_head + 30), (lx + 45, ly_head + 30), (lx + 20, ly_head), (lx - 20, ly_head)],
                   fill=(45, 50, 58), outline=(15, 18, 22))
         d.ellipse((lx - 26, ly_head + 22, lx + 26, ly_head + 46), fill=(255, 245, 160), outline=(255, 200, 50), width=3)
 
-        # 7. 보도블록 바닥 (FLOOR_Y to H)
+        # 7. 보도블록 바닥
         d.rectangle((0, FLOOR_Y, W, H), fill=(95, 95, 110))
-        # 연석(Curbstone) 라인
         d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 16), fill=(40, 42, 50), outline=(20, 20, 25))
-        # 격자 보도블록 패턴
         tile_h = 52
         for r_idx, ty in enumerate(range(FLOOR_Y + 16, H, tile_h)):
             d.line([(0, ty), (W, ty)], fill=(45, 45, 55), width=3)
@@ -1288,36 +1496,23 @@ def make_background(color, pose: str, scene_text: str = "") -> Image.Image:
                 d.line([(tx, ty), (tx, min(H, ty + tile_h))], fill=(50, 50, 62), width=3)
         return img
 
-    elif is_gym:
-        # [헬스장 배경]
-        d.rectangle((0, 0, W, FLOOR_Y), fill=(45, 48, 56))
-        # 대형 거울
-        d.rectangle((80, 180, W - 80, FLOOR_Y - 40), fill=(65, 72, 85), outline=(180, 185, 195), width=8)
-        # 거울 반사 사선 하이라이트
-        for sx in (260, 620):
-            d.polygon([(sx, 180), (sx + 80, 180), (sx - 60, FLOOR_Y - 40), (sx - 140, FLOOR_Y - 40)], fill=(85, 95, 112))
-        # 고무 매트 바닥
-        d.rectangle((0, FLOOR_Y, W, H), fill=(32, 34, 40))
-        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 14), fill=(18, 18, 24))
-        for gy in range(FLOOR_Y + 14, H, 60):
-            d.line([(0, gy), (W, gy)], fill=(22, 24, 28), width=3)
-            for gx in range(0, W, 80):
-                d.line([(gx, gy), (gx, min(H, gy + 60))], fill=(22, 24, 28), width=3)
-        return img
-
     else:
-        # 기본 패턴 벽지 (리치한 웹툰 톤)
-        dot = tuple(max(0, c - 28) for c in color)
-        for row, y in enumerate(range(0, FLOOR_Y + 40, 46)):
-            r = max(2, int(13 * (1 - y / (FLOOR_Y + 40))) + 2)
-            for x in range(-23 if row % 2 else 0, W + 46, 46):
-                d.ellipse((x - r, y - r, x + r, y + r), fill=dot)
-        floor = tuple(max(0, c - 70) for c in color)
-        d.rectangle((0, FLOOR_Y, W, H), fill=floor)
-        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 12), fill=(25, 25, 35))
-        for x in range(0, W + 120, 120):
-            d.polygon([(x, FLOOR_Y + 12), (x + 60, FLOOR_Y + 12), (x + 20, FLOOR_Y + 160), (x - 40, FLOOR_Y + 160)],
-                      fill=tuple(max(0, c - 85) for c in color))
+        # [7. 모던 어반 실내/라운지 범용 배경 (단색 도트 배제)]
+        d.rectangle((0, 0, W, FLOOR_Y), fill=(42, 45, 54))
+        # 상단 앰비언트 백라이트
+        d.rectangle((0, 0, W, 180), fill=(32, 35, 44))
+        for lx in (180, 540, 900):
+            d.rounded_rectangle((lx - 90, 60, lx + 90, 85), radius=4, fill=(240, 245, 255), outline=(190, 210, 240))
+        # 모던 벽면 몰딩 패널
+        for px in (80, 400, 720):
+            d.rounded_rectangle((px, 240, px + 280, FLOOR_Y - 50), radius=10, fill=(48, 52, 62), outline=(65, 70, 84), width=3)
+        # 웜 우드 플로어링 바닥
+        d.rectangle((0, FLOOR_Y, W, H), fill=(90, 68, 50))
+        d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 14), fill=(55, 40, 28))
+        for fy in range(FLOOR_Y + 14, H, 52):
+            d.line([(0, fy), (W, fy)], fill=(65, 48, 34), width=3)
+            for fx in range(0, W + 120, 120):
+                d.line([(fx, fy), (fx, min(H, fy + 52))], fill=(65, 48, 34), width=3)
         return img
 
 
@@ -1678,14 +1873,16 @@ def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
 # =====================================================================
 class SceneVisuals:
     def __init__(self, scene: SceneBeat, idx: int, total: int, title: str, pose: str,
-                 dur: float, hit_t: float, timeline: Optional[List[Dict]] = None) -> None:
+                 dur: float, hit_t: float, timeline: Optional[List[Dict]] = None,
+                 episode_setting: str = "") -> None:
         self.scene, self.idx, self.total, self.dur = scene, idx, total, dur
         self.n_frames = max(1, int(round(dur * FPS)))
         self.ctx = {"hit_t": hit_t, "land_t": 0.9}
         self.cam = parse_camera(scene.camera_work)
         self.scene_text = f"{scene.stickman_action} {scene.tts_narration} {scene.subtitle_text}"
+        self.episode_setting = episode_setting or detect_setting(scene.stickman_action, title, [self.scene_text])
         bg_color = POSE_BG.get(pose, BG_COLORS[idx % len(BG_COLORS)])
-        self.bg = make_background(bg_color, pose, self.scene_text)
+        self.bg = make_background(bg_color, pose, self.scene_text, setting_type=self.episode_setting)
         overlay = make_overlay(title, idx, total, scene.subtitle_text, scene.stickman_action)
         # 상단 오버레이는 타이틀 바 높이(204px)까지만 크롭하여 말풍선과 절대 겹치지 않도록 보장
         self.top = overlay.crop((0, 0, W, 204))
@@ -1912,7 +2109,23 @@ class SceneVisuals:
         draw_figure(d, main_fig, main_p, (20, 20, 30), (255, 255, 255), char_type="A", t=ta)
 
         # --- 상황별 소품 (Props) 자동 렌더링
-        draw_props(d, main_fig, foe_fig, self.scene_text, self.main_pose, self.foe_pose, ta)
+        draw_props(d, main_fig, foe_fig, self.scene_text, self.main_pose, self.foe_pose, ta, setting_type=self.episode_setting)
+
+        # 편의점 설정 시: 주인공 A가 계산대 뒤에 서 있도록 카운터 상판 및 POS 전경 재합성 (A의 하반신을 자연스럽게 가림)
+        if self.episode_setting == "convenience_store":
+            d.rounded_rectangle((180, 1070, 560, FLOOR_Y), radius=8, fill=(32, 40, 55), outline=(90, 105, 130), width=4)
+            d.rounded_rectangle((160, 1040, 580, 1075), radius=8, fill=(245, 245, 250), outline=(160, 175, 195), width=3)
+            # POS 터미널
+            d.rectangle((485, 990, 515, 1040), fill=(25, 28, 35), outline=(60, 65, 80))
+            d.rounded_rectangle((435, 890, 565, 995), radius=8, fill=(20, 22, 28), outline=(90, 100, 120), width=3)
+            d.rectangle((445, 900, 555, 985), fill=(25, 115, 215))
+            for ply in (945, 958, 970):
+                d.line([(452, ply), (510, ply)], fill=(255, 255, 255), width=2)
+            # 영수증 출력기 & 카드 리더기
+            d.rounded_rectangle((360, 990, 425, 1040), radius=5, fill=(30, 34, 44), outline=(70, 75, 90), width=2)
+            d.rectangle((375, 975, 410, 990), fill=(255, 255, 255))
+            d.rounded_rectangle((530, 1010, 575, 1040), radius=4, fill=(40, 45, 58), outline=(100, 110, 130))
+            d.ellipse((560, 1018, 568, 1026), fill=(40, 220, 80))
 
         # --- 전경 이펙트
         main_hx, main_hy = main_fig["head"]
@@ -2513,7 +2726,8 @@ class StickmanShortRenderer:
     # ---------------- 비주얼 + 씬 클립 ----------------
     def _render_scene_visuals(self, scene: SceneBeat, idx: int, total: int, title: str, pose: str,
                               dur: float, hit_t: float, timeline: List[Dict], wav: Path, clip: Path, tmp: Path) -> None:
-        sv = SceneVisuals(scene, idx, total, title, pose, dur, hit_t, timeline=timeline)
+        sv = SceneVisuals(scene, idx, total, title, pose, dur, hit_t, timeline=timeline,
+                          episode_setting=getattr(self, "episode_setting", ""))
         n = sv.n_frames
         cmd = [self.ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
                "-r", str(FPS), "-i", "-", "-i", wav.name, "-map", "0:v", "-map", "1:a",
@@ -2555,6 +2769,12 @@ class StickmanShortRenderer:
         self.episode_context = f"{script.episode_title} " + " ".join(
             f"{s.stickman_action} {s.tts_narration} {s.subtitle_text}" for s in script.scenes
         )
+
+        # 대본의 감정선 분석(transplanted_setting), 제목, 각 씬 지문/대사를 종합 분석하여 장소 자동 판별
+        all_scene_texts = [f"{s.stickman_action} {s.tts_narration} {s.subtitle_text}" for s in script.scenes]
+        setting_desc = getattr(getattr(script, "analysis", None), "transplanted_setting", "")
+        self.episode_setting = detect_setting(setting_desc, script.episode_title, all_scene_texts)
+        print(f"[Renderer:Setting] 대본 기반 장소 자동 감지 완료 -> '{self.episode_setting}' (설정 지문: {setting_desc})")
 
         self.current_episode_id = script.episode_id
         ep_audio_dir = AUDIO_DIR / script.episode_id
