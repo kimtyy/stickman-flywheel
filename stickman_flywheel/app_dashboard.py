@@ -623,50 +623,37 @@ if "flash" in st.session_state:
 if "flash_err" in st.session_state:
     st.error(st.session_state.pop("flash_err"))
 
-# 1. 전체 에피소드 통합 목록 구성 (사이드바 대신 본문 상단에서 직관적으로 선택)
+# 1. 단일 진실 공급원(SSOT) 확립
+if "active_ep_id" not in st.session_state or not st.session_state["active_ep_id"]:
+    st.session_state["active_ep_id"] = "20261026_181819"
+
+# 2. 전체 에피소드 통합 목록 구성 (사이드바 대신 본문 상단에서 직관적으로 선택)
 pending_list = list_files(PENDING_DIR)
 approved_list = list_files(APPROVED_DIR)
 
-# (상태, 순수 파일명) 튜플 리스트로 옵션 구성
-episode_items = [("pending", fname) for fname in pending_list] + [("approved", fname) for fname in approved_list]
+# (상태, 순수 ep_id) 튜플 리스트로 옵션 구성
+loaded_episodes = [("pending", fname[:-5]) for fname in pending_list if fname.endswith(".json")] + \
+                  [("approved", fname[:-5]) for fname in approved_list if fname.endswith(".json")]
 
-def format_episode_label(item) -> str:
-    """st.selectbox 표시용 라벨 포맷터: 순수 파일명 앞에 상태 뱃지 부착"""
-    if isinstance(item, tuple) and len(item) == 2:
-        status, fname = item
-        prefix = "⏳ [검수 대기]" if status == "pending" else "✅ [승인 완료]"
-        return f"{prefix} {fname}"
-    return str(item)
+options = [ep_id for status, ep_id in loaded_episodes]
+status_map = {ep_id: status for status, ep_id in loaded_episodes}
 
-# 강제 선택(target_episode_to_select / force_select) 또는 활성 에피소드 ID(active_episode_id) 감지 및 위젯 세션 상태 직접 동기화
-target_to_select = st.session_state.pop("target_episode_to_select", None)
-forced = st.session_state.pop("force_select", None) or target_to_select
-target_fname = None
+def get_status(ep_id: str) -> str:
+    st_val = status_map.get(ep_id, "approved")
+    return "⏳ 검수 대기" if st_val == "pending" else "✅ 승인 완료"
 
-if forced:
-    target_fname = forced[1] if isinstance(forced, (tuple, list)) else str(forced)
-elif "active_episode_id" in st.session_state and st.session_state["active_episode_id"]:
-    target_fname = f"{st.session_state['active_episode_id']}.json"
+format_func = lambda x: f"[{get_status(x)}] {x}.json"
 
-# target_fname이 있으면 episode_items에서 일치하는 (status, fname) 아이템을 찾아 selectbox 세션 상태 직접 갱신 (위젯 생성 전 1회만 안전하게 설정)
-if target_fname:
-    for item in episode_items:
-        if item[1] == target_fname or target_fname in item[1]:
-            st.session_state["active_episode_selector"] = item
-            break
+# 인덱스 사전 계산
+current_id = st.session_state.get("active_ep_id", "20261026_181819")
+if current_id not in options and options:
+    default_idx = 0
+    st.session_state["active_ep_id"] = options[0]
+else:
+    default_idx = options.index(current_id) if current_id in options else 0
 
-# 혹시 파일이 pending -> approved 로 이동되었거나 초기 실행인 경우 유효성 검증
-if "active_episode_selector" in st.session_state:
-    curr_sel = st.session_state["active_episode_selector"]
-    if curr_sel not in episode_items:
-        curr_fname = curr_sel[1] if isinstance(curr_sel, (tuple, list)) else str(curr_sel)
-        matched = next((it for it in episode_items if it[1] == curr_fname), None)
-        if matched:
-            st.session_state["active_episode_selector"] = matched
-        elif episode_items:
-            st.session_state["active_episode_selector"] = episode_items[0]
-elif episode_items:
-    st.session_state["active_episode_selector"] = episode_items[0]
+def on_ep_change():
+    st.session_state["active_ep_id"] = st.session_state["ep_selector_widget"]
 
 script = None
 is_pending = True
@@ -675,17 +662,21 @@ video_file = None
 key = "empty"
 
 # 본문 상단 통합 에피소드 선택기 카드
-if episode_items:
+if options:
     with st.container(border=True):
         col_ep_sel, col_ep_badge = st.columns([2.6, 1.0], gap="medium")
         with col_ep_sel:
-            selected_item = st.selectbox(
+            selected_ep_id = st.selectbox(
                 "📂 작업할 에피소드 선택 (검수 대기 & 승인 완료)",
-                options=episode_items,
-                key="active_episode_selector",
-                format_func=format_episode_label,
+                options=options,
+                index=default_idx,
+                key="ep_selector_widget",
+                on_change=on_ep_change,
+                format_func=format_func,
                 help="에피소드를 선택하면 하단 1➔2➔3➔4단계 탭에 즉시 동기화되어 한 화면에서 기획, 검수, 오디오, 렌더링이 이뤄집니다."
             )
+            # SSOT 보장 동기화
+            st.session_state["active_ep_id"] = selected_ep_id
         with col_ep_badge:
             st.markdown(f"""
                 <div style="margin-top: 28px; display: flex; gap: 8px; justify-content: flex-end;">
@@ -698,33 +689,22 @@ if episode_items:
                 </div>
             """, unsafe_allow_html=True)
 
-    # 선택된 아이템에서 상태 및 순수 파일명 안전 추출
-    if isinstance(selected_item, tuple) and len(selected_item) == 2:
-        is_pending = (selected_item[0] == "pending")
-        selected_fname = selected_item[1]
-    else:
-        # 혹시 기존 캐시 등으로 문자열이 넘어온 경우 라벨 프리픽스 안전 정제
-        raw = str(selected_item)
-        for prefix in ["⏳ [검수 대기]", "✅ [승인 완료]", "[검수 대기]", "[승인 완료]"]:
-            raw = raw.replace(prefix, "")
-        selected_fname = raw.strip()
-        is_pending = (PENDING_DIR / selected_fname).exists() or not (APPROVED_DIR / selected_fname).exists()
-
+    cur_id = st.session_state["active_ep_id"]
+    is_pending = (status_map.get(cur_id, "approved") == "pending")
     folder = PENDING_DIR if is_pending else APPROVED_DIR
-    file_path = folder / selected_fname
+    file_path = folder / f"{cur_id}.json"
 
     # 파일이 승인 등으로 이동되어 현재 폴더에 없으면 반대쪽 폴더 자동 탐색
     if not file_path.exists():
         alt_folder = APPROVED_DIR if is_pending else PENDING_DIR
-        if (alt_folder / selected_fname).exists():
-            file_path = alt_folder / selected_fname
+        if (alt_folder / f"{cur_id}.json").exists():
+            file_path = alt_folder / f"{cur_id}.json"
             is_pending = not is_pending
 
     if file_path.exists():
         try:
             script = load_script(file_path)
             key = script.episode_id
-            st.session_state["active_episode_id"] = script.episode_id
         except (ValidationError, ValueError) as e:
             st.error(f"대본 JSON 스키마 검증 실패: {e}")
             st.stop()
@@ -822,8 +802,7 @@ with tab_step1:
             rsvp_status = cal_mgr.check_rsvp_approvals()
             if rsvp_status.get("status") == "approved":
                 ep_id = rsvp_status['episode_id']
-                st.session_state["active_episode_id"] = ep_id
-                st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
+                st.session_state["active_ep_id"] = ep_id
                 st.session_state["flash"] = rsvp_status.get("message", "승인 완료!")
                 st.balloons()
                 st.rerun()
@@ -880,8 +859,7 @@ with tab_step1:
                         res = cal_mgr_inst.simulate_rsvp_approval(c_no)
                         if res.get("status") == "approved":
                             ep_id = c['episode_id']
-                            st.session_state["active_episode_id"] = ep_id
-                            st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
+                            st.session_state["active_ep_id"] = ep_id
                             st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
                             st.balloons()
                             st.rerun()
@@ -968,8 +946,7 @@ with tab_step1:
         timeout_res = cal_mgr.check_and_trigger_timeout_auto_approval(force_now=True)
         if timeout_res.get("triggered"):
             ep_id = timeout_res['episode_id']
-            st.session_state["active_episode_id"] = ep_id
-            st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
+            st.session_state["active_ep_id"] = ep_id
             st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
             st.balloons()
             st.rerun()
@@ -1006,8 +983,7 @@ with tab_step1:
             try:
                 new_script = run_pipeline_step1()
                 ep_id = new_script.episode_id
-                st.session_state["active_episode_id"] = ep_id
-                st.session_state["target_episode_to_select"] = ("pending", f"{ep_id}.json")
+                st.session_state["active_ep_id"] = ep_id
                 st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
                 st.rerun()
             except Exception as e:
@@ -1158,8 +1134,7 @@ with tab_step2:
                     with st.spinner("캘린더 등록 및 상태 갱신 중..."):
                         mgr = CalendarManager()
                         result = mgr.schedule_episode_pipeline(edited, target_date)
-                    st.session_state["active_episode_id"] = result.episode_id
-                    st.session_state["target_episode_to_select"] = ("approved", f"{result.episode_id}.json")
+                    st.session_state["active_ep_id"] = result.episode_id
                     st.session_state["flash"] = (
                         f"🎉 승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
                         f"렌더 이벤트: {result.calendar_render_event_id} / "
