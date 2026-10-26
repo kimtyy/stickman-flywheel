@@ -395,18 +395,27 @@ div[data-baseweb="textarea"] textarea:disabled {
 }
 
 /* 2. 최상단 에피소드 선택기 및 모든 selectbox 내부 텍스트 쨍하게 */
+div[data-testid="stSelectbox"] div[data-baseweb="select"],
 .stSelectbox div[data-baseweb="select"] {
     background-color: #1E293B !important;
     border-radius: 8px !important;
 }
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
 .stSelectbox div[data-baseweb="select"] > div {
     background-color: #1E293B !important;
     border: 1px solid #38BDF8 !important;
     border-radius: 8px !important;
 }
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] div[aria-selected="true"],
+div[data-testid="stSelectbox"] div[role="combobox"],
+div[data-testid="stSelectbox"] div[role="combobox"] *,
+div[data-testid="stSelectbox"] [data-baseweb="select"] *,
 .stSelectbox div[data-baseweb="select"] * {
-    color: #F8FAFC !important;
-    -webkit-text-fill-color: #F8FAFC !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
     opacity: 1 !important;
 }
 
