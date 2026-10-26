@@ -398,37 +398,38 @@ div[data-testid="stSelectbox"],
     color: #FFFFFF !important;
 }
 
-/* 셀렉트박스 입력창 프레임 배경 및 테두리 */
+/* 셀렉트박스 모든 박스 및 인풋 배경 완전한 다크 네이비(#1E293B) 강제 */
 div[data-testid="stSelectbox"] > div,
+div[data-testid="stSelectbox"] div,
+div[data-testid="stSelectbox"] input,
 div[data-testid="stSelectbox"] [class*="e1fp86qc0"],
-div[data-testid="stSelectbox"] div[data-baseweb="select"],
-.stSelectbox [class*="e1fp86qc0"],
-.stSelectbox div[data-baseweb="select"] {
+div[data-testid="stSelectbox"] [class*="e1fp86qc1"],
+.stSelectbox div,
+.stSelectbox input {
     background-color: #1E293B !important;
-    border: 1.5px solid #38BDF8 !important;
-    border-radius: 10px !important;
+    background: #1E293B !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
 }
 
-/* Streamlit 1.64+ 및 모든 버전의 셀렉트박스 내부 텍스트 (input, span, div 전체) 순백색 강제 */
+/* 셀렉트박스 외곽선 */
+div[data-testid="stSelectbox"] [class*="e1fp86qc0"],
+div[data-testid="stSelectbox"] > div:nth-child(2),
+.stSelectbox [class*="e1fp86qc0"] {
+    border: 1.5px solid #38BDF8 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+}
+
+/* 셀렉트박스 내부 텍스트 쨍한 순백색 */
 div[data-testid="stSelectbox"] input,
 div[data-testid="stSelectbox"] [class*="e1fp86qc1"],
 div[data-testid="stSelectbox"] span,
 div[data-testid="stSelectbox"] p,
-div[data-testid="stSelectbox"] div,
-div[data-testid="stSelectbox"] * {
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    opacity: 1 !important;
-}
-
 .stSelectbox input,
 .stSelectbox [class*="e1fp86qc1"],
 .stSelectbox span,
-.stSelectbox p,
-.stSelectbox div,
-.stSelectbox * {
+.stSelectbox p {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
     font-size: 15px !important;
@@ -650,30 +651,27 @@ key = "empty"
 
 # 본문 상단 통합 에피소드 선택기 카드
 if episode_items:
-    st.markdown("""
-        <div class="stitch-card" style="padding: 16px 20px; margin-bottom: 20px;">
-    """, unsafe_allow_html=True)
-    col_ep_sel, col_ep_badge = st.columns([2.6, 1.0], gap="medium")
-    with col_ep_sel:
-        selected_item = st.selectbox(
-            "📂 작업할 에피소드 선택 (검수 대기 & 승인 완료)",
-            options=episode_items,
-            index=default_idx,
-            format_func=format_episode_label,
-            help="에피소드를 선택하면 하단 1➔2➔3➔4단계 탭에 즉시 동기화되어 한 화면에서 기획, 검수, 오디오, 렌더링이 이뤄집니다."
-        )
-    with col_ep_badge:
-        st.markdown(f"""
-            <div style="margin-top: 28px; display: flex; gap: 8px; justify-content: flex-end;">
-                <span style="font-size: 0.82rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); color: #FBBF24; padding: 6px 12px; border-radius: 10px; font-weight: 700;">
-                    ⏳ 대기 {len(pending_list)}건
-                </span>
-                <span style="font-size: 0.82rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34D399; padding: 6px 12px; border-radius: 10px; font-weight: 700;">
-                    ✅ 승인 {len(approved_list)}건
-                </span>
-            </div>
-        """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        col_ep_sel, col_ep_badge = st.columns([2.6, 1.0], gap="medium")
+        with col_ep_sel:
+            selected_item = st.selectbox(
+                "📂 작업할 에피소드 선택 (검수 대기 & 승인 완료)",
+                options=episode_items,
+                index=default_idx,
+                format_func=format_episode_label,
+                help="에피소드를 선택하면 하단 1➔2➔3➔4단계 탭에 즉시 동기화되어 한 화면에서 기획, 검수, 오디오, 렌더링이 이뤄집니다."
+            )
+        with col_ep_badge:
+            st.markdown(f"""
+                <div style="margin-top: 28px; display: flex; gap: 8px; justify-content: flex-end;">
+                    <span style="font-size: 0.82rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); color: #FBBF24; padding: 6px 12px; border-radius: 10px; font-weight: 700;">
+                        ⏳ 대기 {len(pending_list)}건
+                    </span>
+                    <span style="font-size: 0.82rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34D399; padding: 6px 12px; border-radius: 10px; font-weight: 700;">
+                        ✅ 승인 {len(approved_list)}건
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
 
     # 선택된 아이템에서 상태 및 순수 파일명 안전 추출
     if isinstance(selected_item, tuple) and len(selected_item) == 2:
