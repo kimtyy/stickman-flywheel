@@ -379,6 +379,32 @@ div[data-testid="stVideo"]::after {
     margin-top: 4px;
 }
 
+/* 셀렉트박스 선택된 값 및 텍스트 쨍한 순백색 강제 지정 */
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] div,
+.stSelectbox [data-baseweb="select"] * {
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* 셀렉트박스 컨테이너 배경 및 테두리 시인성 보강 */
+div[data-baseweb="select"] > div {
+    background-color: #1E293B !important;
+    border: 1px solid #38BDF8 !important;
+}
+
+/* 드롭다운 옵션 팝업 메뉴 시인성 보강 */
+div[data-baseweb="popover"] li,
+div[data-baseweb="menu"] li,
+div[data-baseweb="popover"] * {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+div[data-baseweb="popover"] {
+    background-color: #0F172A !important;
+}
+
 /* Expander 다크 글래스 */
 div[data-testid="stExpander"] {
     background: rgba(17, 24, 39, 0.75) !important;
