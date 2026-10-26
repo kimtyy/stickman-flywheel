@@ -1,10 +1,11 @@
 """Google Calendar 연동 및 스케줄 오케스트레이터 (인증 미설정 시 Dry-Run)."""
+import json
 import os
 import shutil
 import uuid
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -15,6 +16,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 PENDING_DIR = BASE_DIR / "pipeline_outputs" / "pending"
 APPROVED_DIR = BASE_DIR / "pipeline_outputs" / "approved"
+CANDIDATE_SERVING_FILE = BASE_DIR / "pipeline_outputs" / "candidate_serving.json"
 PENDING_DIR.mkdir(parents=True, exist_ok=True)
 APPROVED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -78,7 +80,8 @@ class CalendarManager:
             self.dry_run = True
 
     def _create_event(self, summary: str, description: str, start: datetime,
-                      end: datetime, color_id: str) -> str:
+                      end: datetime, color_id: str,
+                      attendees: Optional[List[Dict[str, Any]]] = None) -> str:
         body: Dict[str, Any] = {
             "summary": summary,
             "description": description,
@@ -86,6 +89,8 @@ class CalendarManager:
             "start": {"dateTime": start.isoformat(), "timeZone": TIMEZONE},
             "end": {"dateTime": end.isoformat(), "timeZone": TIMEZONE},
         }
+        if attendees:
+            body["attendees"] = attendees
         if self.dry_run or self.service is None:
             return f"dryrun-{uuid.uuid4().hex[:12]}"
         try:
@@ -96,6 +101,235 @@ class CalendarManager:
         except Exception as e:
             print(f"[Calendar] 이벤트 생성 실패 → 가상 ID 반환: {e}")
             return f"dryrun-{uuid.uuid4().hex[:12]}"
+
+    def serve_candidate_buffet(self, candidates: List[Dict[str, Any]],
+                               target_date: date,
+                               attendee_email: Optional[str] = None) -> Dict[str, Any]:
+        """오늘자 3대 킬러 후보 대본을 구글 캘린더에 RSVP 초대로 서빙 등록."""
+        email_to_invite = (
+            attendee_email
+            or os.getenv("CALENDAR_USER_EMAIL")
+            or os.getenv("GOOGLE_CALENDAR_USER_EMAIL")
+            or os.getenv("GOOGLE_CALENDAR_ID")
+        )
+        attendees_list: List[Dict[str, Any]] = []
+        if email_to_invite and "@" in email_to_invite and email_to_invite != "primary":
+            attendees_list.append({
+                "email": email_to_invite.strip(),
+                "responseStatus": "needsAction",
+                "displayName": "스틱맨 숏폼 총괄 디렉터"
+            })
+
+        color_palette = ["9", "5", "11"]  # Blueberry, Banana, Flamingo
+        served_candidates = []
+
+        for idx, cand in enumerate(candidates):
+            c_no = cand.get("candidate_no", idx + 1)
+            script: StickmanScriptOutput = cand["script"]
+            hit_rate = cand.get("predicted_hit_rate", 95)
+            cat = cand.get("category", "사이다 참교육")
+
+            summary = f"[후보 {c_no}] {script.episode_title} (적중률 {hit_rate}%)"
+
+            scene_brief = "\n".join(
+                f"S{s.scene_number} ({s.duration_sec}s): {s.subtitle_text} / {s.tts_narration[:55]}"
+                for s in script.scenes
+            )
+
+            description = (
+                f"🏆 [후보 {c_no}] 테마: {cat}\n"
+                f"📊 예상 쇼츠 적중률: {hit_rate}%\n\n"
+                f"📌 감정 역공학 브리핑:\n"
+                f"- 버린 껍데기: {script.analysis.discarded_surface_topic}\n"
+                f"- 코어 욕망: {script.analysis.extracted_core_desire}\n"
+                f"- 새로운 상황: {script.analysis.transplanted_setting}\n"
+                f"- 3초 반전: {script.analysis.twist_point}\n\n"
+                f"🎬 5~7씬 대사/연출 요약 (총 {script.total_duration_sec}초):\n{scene_brief}\n\n"
+                f"--------------------------------------------------\n"
+                f"📱 [모바일 원클릭 승인 안내]\n"
+                f"스마트폰 캘린더 상단의 '[예(Yes)]'를 터치하시면,\n"
+                f"이 대본이 [승인 완료]되어 스틱맨 렌더링 파이프라인으로 즉시 자동 연결됩니다!\n"
+                f"--------------------------------------------------\n"
+                f"<!-- EPISODE_ID: {script.episode_id} -->\n"
+                f"<!-- CANDIDATE_NO: {c_no} -->\n"
+            )
+
+            # 오전 10시부터 1시간 간격으로 서빙
+            start_dt = datetime.combine(target_date, time(10 + idx, 0))
+            end_dt = start_dt + timedelta(minutes=45)
+            cid = color_palette[idx % len(color_palette)]
+
+            event_id = self._create_event(
+                summary=summary,
+                description=description,
+                start=start_dt,
+                end=end_dt,
+                color_id=cid,
+                attendees=attendees_list if attendees_list else None
+            )
+
+            served_candidates.append({
+                "candidate_no": c_no,
+                "episode_id": script.episode_id,
+                "episode_title": script.episode_title,
+                "predicted_hit_rate": hit_rate,
+                "category": cat,
+                "calendar_event_id": event_id,
+                "rsvp_status": "needsAction",
+                "start_time": start_dt.strftime("%H:%M"),
+            })
+
+        serving_data = {
+            "serving_date": str(target_date),
+            "served_at": datetime.now().isoformat(),
+            "status": "awaiting_rsvp",
+            "attendee_email": email_to_invite,
+            "approved_episode_id": None,
+            "approved_candidate_no": None,
+            "candidates": served_candidates,
+        }
+
+        CANDIDATE_SERVING_FILE.write_text(json.dumps(serving_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        mode = "Live" if (not self.dry_run and self.service) else "Dry-Run"
+        print(f"[CalendarBuffet:{mode}] 3대 후보 대본 구글 캘린더 서빙 등록 완료")
+        return serving_data
+
+    def check_rsvp_approvals(self) -> Dict[str, Any]:
+        """모바일 캘린더에서 사용자가 '[예]'를 눌렀는지 실시간 감지하여 자동 승인."""
+        if not CANDIDATE_SERVING_FILE.exists():
+            return {"has_serving": False, "message": "등록된 밥상 서빙 내역이 없습니다."}
+
+        try:
+            data = json.loads(CANDIDATE_SERVING_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            return {"has_serving": False, "message": f"서빙 데이터 파싱 실패: {e}"}
+
+        # 이미 승인 완료된 경우
+        if data.get("status") == "approved":
+            ep_id = data.get("approved_episode_id")
+            c_no = data.get("approved_candidate_no")
+            approved_path = APPROVED_DIR / f"{ep_id}.json"
+            script = load_script(approved_path) if approved_path.exists() else None
+            return {
+                "has_serving": True,
+                "status": "approved",
+                "winner_candidate_no": c_no,
+                "episode_id": ep_id,
+                "script": script,
+                "message": f"🎉 [후보 {c_no}] {script.episode_title if script else ep_id} 승인 완료 상태"
+            }
+
+        # 실시간 캘린더 API 조회 (Live 모드)
+        winner_candidate = None
+
+        if not self.dry_run and self.service is not None:
+            for cand in data.get("candidates", []):
+                ev_id = cand.get("calendar_event_id")
+                if not ev_id or ev_id.startswith("dryrun-"):
+                    continue
+                try:
+                    ev = self.service.events().get(calendarId=self.calendar_id, eventId=ev_id).execute()
+                    attendees = ev.get("attendees", [])
+                    for att in attendees:
+                        if att.get("responseStatus") == "accepted":
+                            cand["rsvp_status"] = "accepted"
+                            winner_candidate = cand
+                            break
+                    if winner_candidate:
+                        break
+                except Exception as e:
+                    print(f"[CalendarRSVP] 이벤트 조회 실패 ({ev_id}): {e}")
+
+        # Dry-run이나 로컬에서 accepted로 마킹된 항목 확인
+        if not winner_candidate:
+            for cand in data.get("candidates", []):
+                if cand.get("rsvp_status") == "accepted":
+                    winner_candidate = cand
+                    break
+
+        if winner_candidate:
+            ep_id = winner_candidate["episode_id"]
+            c_no = winner_candidate["candidate_no"]
+            pending_path = PENDING_DIR / f"{ep_id}.json"
+            approved_path = APPROVED_DIR / f"{ep_id}.json"
+
+            script = None
+            if pending_path.exists():
+                script = load_script(pending_path)
+                approved_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+                pending_path.unlink(missing_ok=True)
+            elif approved_path.exists():
+                script = load_script(approved_path)
+
+            # 구글 캘린더 이벤트 제목 업데이트 (승인 채택 강조 및 미채택 표기)
+            if not self.dry_run and self.service is not None:
+                for cand in data.get("candidates", []):
+                    ev_id = cand.get("calendar_event_id")
+                    if not ev_id or ev_id.startswith("dryrun-"):
+                        continue
+                    try:
+                        if cand["candidate_no"] == c_no:
+                            self.service.events().patch(
+                                calendarId=self.calendar_id,
+                                eventId=ev_id,
+                                body={
+                                    "summary": f"[✅ 승인 채택] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
+                                    "colorId": "10"  # Basil (Green)
+                                }
+                            ).execute()
+                        else:
+                            self.service.events().patch(
+                                calendarId=self.calendar_id,
+                                eventId=ev_id,
+                                body={
+                                    "summary": f"[미채택 후보] {cand['episode_title']}",
+                                    "colorId": "8"  # Graphite
+                                }
+                            ).execute()
+                    except Exception as e:
+                        print(f"[Calendar] 이벤트 상태 업데이트 실패: {e}")
+
+            data["status"] = "approved"
+            data["approved_episode_id"] = ep_id
+            data["approved_candidate_no"] = c_no
+            CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+            return {
+                "has_serving": True,
+                "status": "approved",
+                "just_approved": True,
+                "winner_candidate_no": c_no,
+                "episode_id": ep_id,
+                "script": script,
+                "message": f"🎉 모바일 캘린더에서 [후보 {c_no}] '{script.episode_title if script else ep_id}' 승인 감지!"
+            }
+
+        return {
+            "has_serving": True,
+            "status": "awaiting_rsvp",
+            "candidates": data.get("candidates", []),
+            "message": "⏳ 구글 캘린더 앱에서 원하시는 후보의 [예(Yes)]를 터치해 주세요."
+        }
+
+    def simulate_rsvp_approval(self, candidate_no: int) -> Dict[str, Any]:
+        """모바일 대신 대시보드에서 즉시 [예] 응답을 시뮬레이션 승인."""
+        if not CANDIDATE_SERVING_FILE.exists():
+            return {"success": False, "message": "서빙 데이터가 없습니다."}
+        data = json.loads(CANDIDATE_SERVING_FILE.read_text(encoding="utf-8"))
+        for cand in data.get("candidates", []):
+            if cand.get("candidate_no") == candidate_no:
+                cand["rsvp_status"] = "accepted"
+        CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return self.check_rsvp_approvals()
+
+    def get_current_serving_status(self) -> Optional[Dict[str, Any]]:
+        """현재 서빙 중인 3대 후보 대본 정보 반환."""
+        if not CANDIDATE_SERVING_FILE.exists():
+            return None
+        try:
+            return json.loads(CANDIDATE_SERVING_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
     def schedule_episode_pipeline(self, script_data: StickmanScriptOutput,
                                   target_date: date) -> StickmanScriptOutput:

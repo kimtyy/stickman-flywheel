@@ -23,8 +23,8 @@ try:
 except Exception:
     pass
 
-from module1_trend_and_script import run_pipeline_step1
-from module2_calendar_manager import APPROVED_DIR, PENDING_DIR, CalendarManager, load_script
+from module1_trend_and_script import run_pipeline_step1, run_curation_batch
+from module2_calendar_manager import APPROVED_DIR, PENDING_DIR, CalendarManager, load_script, CANDIDATE_SERVING_FILE
 import module3_renderer
 
 try:
@@ -727,19 +727,152 @@ tab_step1, tab_step2, tab_step3, tab_step4 = st.tabs([
 # [Step 1: 기획 & 대본] (트렌드 감지, 소재 추출, 신규 대본 생성, 감정 역공학)
 # ------------------------------------------------------------------------------
 with tab_step1:
+    # --------------------------------------------------------------------------
+    # 1. 실시간 트렌드 자동 큐레이션 & 구글 캘린더 '밥상 서빙' (모바일 RSVP 원클릭 승인)
+    # --------------------------------------------------------------------------
     st.markdown("""
         <div class="stitch-card">
-            <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                <span>🚀</span> AI 트렌드 감지 & 오리지널 대본 생성기
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="font-weight: 850; font-size: 1.2rem; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem;">🍽️</span> 실시간 트렌드 자동 큐레이션 & 구글 캘린더 '밥상 서빙'
+                </div>
+                <div style="font-size: 0.8rem; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38BDF8; padding: 4px 10px; border-radius: 8px; font-weight: 800;">
+                    RSVP 모바일 원클릭 승인
+                </div>
             </div>
-            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 18px; line-height: 1.5;">
-                구글 트렌드 및 유튜브 실시간 급상승 숏폼 데이터를 감지하여, 표면적 소재를 버리고 대중이 열광하는 <strong>감정 결핍(코어 욕망)</strong>을 역공학해 독창적인 스틱맨 숏폼 대본으로 합성합니다.
+            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 18px; line-height: 1.6;">
+                최신 쇼츠 트렌드 및 사이다·미러링 썰(편의점·층간소음·갑질 등)을 실시간 분석하여 <strong>오늘자 3대 킬러 대본</strong>을 큐레이션하고, 구글 캘린더에 <strong>초대장(RSVP: [예 / 아니요 / 미정])</strong> 형태로 자동 등록합니다.<br>
+                스마트폰 캘린더 알림에서 <strong>[예]</strong>만 누르면 즉시 [승인 완료]되어 렌더링 파이프라인으로 직행합니다.
             </div>
     """, unsafe_allow_html=True)
 
-    btn_step1 = st.button("✨ 신규 트렌드 감지 & 오리지널 대본 즉시 생성 (Gemini 2.5 Pro)", type="primary", use_container_width=True)
+    col_cfg1, col_cfg2 = st.columns([1.0, 1.8], gap="medium")
+    with col_cfg1:
+        buffet_date = st.date_input("📅 서빙 기준 일자", value=date.today(), key="buffet_serving_date")
+    with col_cfg2:
+        default_user_email = os.getenv("CALENDAR_USER_EMAIL", os.getenv("GOOGLE_CALENDAR_ID", "user@gmail.com"))
+        target_attendee = st.text_input(
+            "📧 초대받을 구글 캘린더 계정 이메일",
+            value=default_user_email if "@" in default_user_email else "",
+            placeholder="your-google-account@gmail.com",
+            key="buffet_attendee_email",
+            help="스마트폰 구글 캘린더 앱에 로그인된 이메일 계정을 입력하면, 해당 계정으로 [예/아니요] 참석 초대장이 즉시 발송됩니다."
+        )
+
+    col_act_serve, col_act_check = st.columns([1.6, 1.4], gap="medium")
+    with col_act_serve:
+        btn_curate_serve = st.button("🍽️ 오늘자 3대 킬러 대본 큐레이션 & 캘린더 밥상 서빙", type="primary", use_container_width=True)
+    with col_act_check:
+        btn_check_rsvp = st.button("🔄 모바일 캘린더 RSVP '[예]' 승인 동기화 감지", use_container_width=True)
+
+    # 1) 3대 킬러 대본 큐레이션 & 밥상 서빙 실행
+    if btn_curate_serve:
+        bar_curate = st.progress(0.0)
+        status_curate = st.empty()
+
+        def on_curate_progress(msg: str, frac: float):
+            bar_curate.progress(min(max(frac, 0.0), 1.0))
+            status_curate.caption(msg)
+
+        try:
+            with st.spinner("실시간 트렌드 분석 → 3대 사이다 썰 큐레이션 → 구글 캘린더 초대장 발송 중..."):
+                candidates = run_curation_batch(count=3, progress_callback=on_curate_progress)
+                cal_mgr = CalendarManager()
+                serving_res = cal_mgr.serve_candidate_buffet(
+                    candidates=candidates,
+                    target_date=buffet_date,
+                    attendee_email=target_attendee
+                )
+                st.session_state["flash"] = f"🎉 3대 킬러 대본 큐레이션 완료! 구글 캘린더에 RSVP 초대([예])가 발송되었습니다."
+                st.rerun()
+        except Exception as e:
+            st.error(f"큐레이션 서빙 실패: {e}")
+
+    # 2) 캘린더 RSVP [예] 승인 상태 동기화 감지
+    if btn_check_rsvp:
+        with st.spinner("구글 캘린더 RSVP 응답 상태 확인 중..."):
+            cal_mgr = CalendarManager()
+            rsvp_status = cal_mgr.check_rsvp_approvals()
+            if rsvp_status.get("status") == "approved":
+                st.session_state["force_select"] = ("approved", f"{rsvp_status['episode_id']}.json")
+                st.session_state["flash"] = rsvp_status.get("message", "승인 완료!")
+                st.balloons()
+                st.rerun()
+            else:
+                st.info(rsvp_status.get("message", "응답 확인 완료"))
+
+    # 현재 서빙 중인 3대 후보 카드 실시간 모니터
+    cal_mgr_inst = CalendarManager()
+    active_serving = cal_mgr_inst.get_current_serving_status()
+
+    if active_serving and active_serving.get("candidates"):
+        st.markdown("""
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-weight: 800; font-size: 1.05rem; color: #E2E8F0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span>🍱</span> 현재 서빙된 3대 후보 대본 현황 (모바일 캘린더 연동 모니터)
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        cand_cols = st.columns(3, gap="small")
+        is_already_approved = (active_serving.get("status") == "approved")
+        winner_id = active_serving.get("approved_episode_id")
+
+        for idx, c in enumerate(active_serving.get("candidates", [])):
+            c_no = c.get("candidate_no", idx + 1)
+            hit_pct = c.get("predicted_hit_rate", 95)
+            is_winner = (c.get("episode_id") == winner_id)
+            with cand_cols[idx]:
+                border_color = "#10B981" if is_winner else "#38BDF8"
+                badge_bg = "rgba(16, 185, 129, 0.2)" if is_winner else "rgba(56, 189, 248, 0.15)"
+                badge_text = "✅ [예] 승인 채택" if is_winner else f"🏆 적중률 {hit_pct}%"
+
+                st.markdown(f"""
+                    <div style="background: #0F172A; border: 1.5px solid {border_color}; border-radius: 14px; padding: 14px; height: 100%;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-weight: 850; font-size: 0.95rem; color: #FFFFFF;">후보 {c_no}</span>
+                            <span style="font-size: 0.76rem; background: {badge_bg}; color: {border_color}; padding: 3px 8px; border-radius: 6px; font-weight: 800;">
+                                {badge_text}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.78rem; color: #94A3B8; margin-bottom: 6px;">{c.get('category', '사이다 상황극')}</div>
+                        <div style="font-size: 0.88rem; font-weight: 700; color: #F8FAFC; margin-bottom: 10px; line-height: 1.4;">
+                            {c.get('episode_title')}
+                        </div>
+                        <div style="font-size: 0.75rem; color: #64748B; font-family: 'JetBrains Mono', monospace;">
+                            ID: {c.get('episode_id')}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                if not is_already_approved:
+                    btn_sim = st.button(f"📱 [후보 {c_no}] 즉시 채택", key=f"btn_sim_rsvp_{c_no}", use_container_width=True)
+                    if btn_sim:
+                        res = cal_mgr_inst.simulate_rsvp_approval(c_no)
+                        if res.get("status") == "approved":
+                            st.session_state["force_select"] = ("approved", f"{c['episode_id']}.json")
+                            st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
+                            st.balloons()
+                            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # --------------------------------------------------------------------------
+    # 2. 개별 오리지널 대본 단독 즉시 생성 (수동 모드)
+    # --------------------------------------------------------------------------
+    st.markdown("""
+        <div class="stitch-card">
+            <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 6px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                <span>⚡</span> 개별 오리지널 대본 단독 즉시 생성 (수동 모드)
+            </div>
+            <div style="font-size: 0.86rem; color: #94A3B8; margin-bottom: 14px;">
+                특정 실시간 급상승 키워드를 기반으로 1편의 대본을 즉시 단독 생성하여 기획합니다.
+            </div>
+    """, unsafe_allow_html=True)
+
+    btn_step1 = st.button("✨ 신규 트렌드 감지 & 오리지널 대본 1편 생성", use_container_width=True)
     if btn_step1:
-        with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중... (1~2분 소요)"):
+        with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중..."):
             try:
                 new_script = run_pipeline_step1()
                 st.session_state["force_select"] = ("pending", f"{new_script.episode_id}.json")
