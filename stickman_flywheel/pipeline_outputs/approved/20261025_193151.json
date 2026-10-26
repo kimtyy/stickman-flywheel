@@ -1,0 +1,89 @@
+{
+  "episode_id": "20261025_193151",
+  "episode_title": "당근마켓 현장 네고 진상의 최후",
+  "target_emotion": "어이없는 분노 후 찾아오는 폭발적인 카타르시스",
+  "analysis": {
+    "discarded_surface_topic": "맘카페나 커뮤니티에 올라오는 흔한 중고거래 네고 썰이나 무료 나눔 요구 텍스트",
+    "extracted_core_desire": "현장에서 어색한 분위기를 무기 삼아 뻔뻔하게 약속된 금액을 깎아치려는 얌체족에 대한 극심한 혐오감과, 이들을 물리적으로 응징하고픈 원초적 사이다 결핍",
+    "transplanted_setting": "적막한 야간 지하철역 4번 출구 앞 중고거래 스팟",
+    "twist_point": "거절하면 그만인 현실을 넘어, 하늘에서 10톤짜리 강철 당근이 떨어져 진상을 물리적으로 압사시키고 깎으려던 푼돈을 수수료로 챙겨가는 블랙코미디"
+  },
+  "total_duration_sec": 31,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration_sec": 4,
+      "stickman_action": "스틱맨 A가 시계를 보며 기다리는데, 콧수염을 단 스틱맨 B가 미끌어지듯 다가와 얄밉게 웃으며 엄청나게 얇은 돈봉투를 내민다.",
+      "camera_work": "Zoom-in on the suspiciously thin envelope",
+      "sfx_cue": "0.0s night_cricket, 2.0s slide_whistle, 3.0s paper_rustle",
+      "tts_narration": "해설: 쿨거래 약속하고 나타난 매너온도 99도 아저씨.\nA: 저기, 연락 주신 분 맞죠?",
+      "subtitle_text": "쿨거래 (얇은 봉투)"
+    },
+    {
+      "scene_number": 2,
+      "duration_sec": 4,
+      "stickman_action": "A가 봉투를 열어보고 눈알이 화면 밖으로 튀어나올 듯 놀란다. B는 뻔뻔하게 짝다리를 짚고 새끼손가락으로 코를 후빈다.",
+      "camera_work": "Fast Pan between A's shocked face and B's shameless face",
+      "sfx_cue": "0.5s eye_pop, 2.0s boing",
+      "tts_narration": "해설: 오십만 원짜리 폰인데 봉투가 깃털처럼 가볍다.\nB: 아, 내가 오는 길에 차비가 좀 들어서. 오만 원만 넣었어.",
+      "subtitle_text": "50만원 -> 5만원?"
+    },
+    {
+      "scene_number": 3,
+      "duration_sec": 4,
+      "stickman_action": "A가 어이가 없어 스마트폰 상자를 뒤로 빼려 하자, B가 양손으로 상자를 꽉 쥐고 안 놓으며 스틱맨 특유의 찰진 줄다리기가 시작된다.",
+      "camera_work": "Screen Shake on every tug",
+      "sfx_cue": "1.0s tug_of_war_groan, 2.5s cartoon_stretch",
+      "tts_narration": "해설: 뭐라는 거야 이 진상은?\nA: 아니, 사십오만 원을 현장에서 깎는 게 말이 돼요?\nB: 에이, 학생! 쪼잔하게 굴지 말고 그냥 줘!",
+      "subtitle_text": "현장 네고 방어전"
+    },
+    {
+      "scene_number": 4,
+      "duration_sec": 4,
+      "stickman_action": "B가 갑자기 상자를 놓고 팔짱을 끼더니 홱 돌아서며 가는 척을 한다. 눈동자만 뒤로 굴려 A의 눈치를 살핀다.",
+      "camera_work": "Close-up on B's sneaky eyes",
+      "sfx_cue": "1.0s angry_stomp, 2.5s sneaky_footsteps",
+      "tts_narration": "해설: 급기야 적반하장으로 소리를 지르기 시작하는데!\nB: 어어, 야! 어른이 말하는데 폰 안 놔? 나 그냥 간다?",
+      "subtitle_text": "적반하장 스킬 발동"
+    },
+    {
+      "scene_number": 5,
+      "duration_sec": 5,
+      "stickman_action": "참다못한 A의 머리 위로 분노의 불기둥이 솟구친다. A가 주머니에서 무전기를 꺼내 들고 스위치를 누른다. B는 뒤돌아보다 당황하며 땀을 흘린다.",
+      "camera_work": "Zoom-in to A's glowing red eyes",
+      "sfx_cue": "0.5s fire_burst, 2.0s walkie_talkie_static",
+      "tts_narration": "해설: 빡친 주인공, 특단의 조치를 꺼내드는데!\nA: 네, 당근 본부. 여기 현장 네고 진상 발견. 즉시 투하하세요.",
+      "subtitle_text": "당근 본부, 투하 요망"
+    },
+    {
+      "scene_number": 6,
+      "duration_sec": 5,
+      "stickman_action": "B의 머리 위로 거대한 그림자가 드리워진다. 하늘에서 10톤짜리 강철 당근이 엄청난 속도로 떨어지며 도망가려던 B가 완벽하게 깔려 참교육을 당한다.",
+      "camera_work": "Extreme Screen Shake, Zoom-out",
+      "sfx_cue": "1.0s falling_whistle, 3.0s heavy_metal_smash, 3.5s scream",
+      "tts_narration": "해설: 하늘에서 떨어지는 십 톤짜리 강철 당근의 참교육!\nB: 어어, 저게 뭐야? 으아악, 사람 살려!",
+      "subtitle_text": "10톤 강철 당근 참교육!"
+    },
+    {
+      "scene_number": 7,
+      "duration_sec": 5,
+      "stickman_action": "강철 당근 밑으로 종이장처럼 완전히 납작해진 B의 손만 파르르 떨린다. A가 바닥에 떨어진 5만 원권 지폐를 줍고 쿨하게 엄지를 치켜세우며 퇴장한다.",
+      "camera_work": "Freeze Frame on A giving a thumbs up with the 50k won",
+      "sfx_cue": "0.5s paper_flutter, 2.5s cash_register_ding",
+      "tts_narration": "해설: 완전히 납작하게 깔려버린 진상.\nA: 아, 이 오만 원은 폐기물 압사 비용으로 쓸게요. 수고하세요!",
+      "subtitle_text": "압사 비용 5만원 꿀꺽"
+    }
+  ],
+  "hashtags": [
+    "#스틱맨",
+    "#당근마켓",
+    "#현장네고",
+    "#진상퇴치",
+    "#참교육",
+    "#사이다",
+    "#슬랩스틱"
+  ],
+  "calendar_render_event_id": "dryrun-424ac9e42b17",
+  "calendar_upload_event_id": "dryrun-29e4d04bc280",
+  "rendered_video_path": "C:\\Users\\user\\스틱맨 숏폼 자율 플라이휠 시스템\\stickman_flywheel\\pipeline_outputs\\rendered\\20261025_193151.mp4"
+}

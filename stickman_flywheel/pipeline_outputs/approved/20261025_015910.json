@@ -1,0 +1,83 @@
+{
+  "episode_id": "20261025_015910",
+  "episode_title": "헬스장 기구 전세 낸 놈 참교육 역관광",
+  "target_emotion": "뻔뻔한 영역 침범에 대한 폭발적이고 물리적인 카타르시스",
+  "analysis": {
+    "discarded_surface_topic": "지옥철, 층간소음, 주차장 등 뻔한 스트레스 공간 및 상황 소재 전부 폐기",
+    "extracted_core_desire": "사회적 눈치 때문에 억눌러야 했던 이기적인 타인에 대한 분노를 원초적이고 황당한 물리력으로 박살내고 싶은 욕망",
+    "transplanted_setting": "헬스장 벤치프레스 벤치를 침대처럼 차지하고 스마트폰만 하는 밉상 빌런과의 대치 상황",
+    "twist_point": "제지할 줄 알았던 헬스장 관장이 오히려 인간 바벨이 된 빌런 배 위에 20kg 원판을 얹어주며 PT를 도와줌"
+  },
+  "total_duration_sec": 33,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration_sec": 5,
+      "stickman_action": "스틱맨 B가 벤치프레스에 앉아 다리를 꼬고 스마트폰만 스크롤함. 스틱맨 A는 뒤에서 팔짱 끼고 발을 구르며 기다림. A의 머리 위로 붉은 김이 솟아오름.",
+      "camera_work": "A와 B를 번갈아 비추는 빠른 줌인",
+      "sfx_cue": "0.5s phone_tap_loop, 3.0s steam_hiss",
+      "tts_narration": "아 벤치프레스 20분째 폰만 하네. 집 안방인가?",
+      "subtitle_text": "기구 전세 낸 놈"
+    },
+    {
+      "scene_number": 2,
+      "duration_sec": 4,
+      "stickman_action": "A가 B의 어깨를 톡톡 침. B가 힐끗 보더니 무시하고 벤치에 아예 드러누워 브이 자를 그리며 셀카를 찍음.",
+      "camera_work": "B의 뻔뻔한 얼굴로 화면 꽉 차게 클로즈업",
+      "sfx_cue": "1.0s shoulder_tap, 2.5s camera_shutter",
+      "tts_narration": "저기요 언제 끝나... 헐 지금 셀카 찍어?",
+      "subtitle_text": "여기서 셀카를 왜 찍어!"
+    },
+    {
+      "scene_number": 3,
+      "duration_sec": 5,
+      "stickman_action": "B가 누운 채로 먹던 프로틴 쉐이크를 툭 떨어뜨려 A의 새하얀 운동화에 엎음. B는 어깨만 으쓱하고 다시 폰을 봄. A의 턱이 바닥까지 떨어짐.",
+      "camera_work": "더러워진 신발에서 A의 분노한 얼굴로 패스트 업 틸트",
+      "sfx_cue": "1.5s liquid_splash, 3.0s warning_siren",
+      "tts_narration": "아 내 한정판 신발! 미안하다는 말도 없냐?",
+      "subtitle_text": "분노 게이지 MAX"
+    },
+    {
+      "scene_number": 4,
+      "duration_sec": 4,
+      "stickman_action": "A가 헐크처럼 상체가 커지더니 B의 양 발목을 잡고 헬리콥터처럼 빙빙 돌림. B의 팔다리가 오징어처럼 흐느적거림.",
+      "camera_work": "화면 전체가 미친 듯이 흔들림 Screen Shake",
+      "sfx_cue": "0.5s grab_thud, 1.0s helicopter_spin_loop",
+      "tts_narration": "너 이 자식 폰 이리 내놔!",
+      "subtitle_text": "인내심 붕괴"
+    },
+    {
+      "scene_number": 5,
+      "duration_sec": 5,
+      "stickman_action": "A가 B를 바벨 봉에 케이블타이로 묶어버림. 그리고 B를 매달고 빛의 속도로 분노의 벤치프레스를 시작함. B는 오르락내리락하며 헛구역질을 함.",
+      "camera_work": "바벨의 상하 움직임에 맞춰 카메라 시점도 위아래로 바운스",
+      "sfx_cue": "0.5s zip_tie, 2.0s metal_squeak_loop, 3.5s cartoon_dizzy",
+      "tts_narration": "네가 그렇게 벤치프레스를 좋아해? 그럼 네가 벤치가 되어라!",
+      "subtitle_text": "인간 바벨 프레스"
+    },
+    {
+      "scene_number": 6,
+      "duration_sec": 4,
+      "stickman_action": "우람한 근육질의 헬스장 관장이 팔짱을 끼고 등장함. A가 흠칫 놀라 벤치프레스를 멈춤. 바벨에 매달린 B가 살려달라는 눈빛을 보냄.",
+      "camera_work": "관장의 굳은 얼굴을 로우 앵글로 비춘 뒤 Freeze Frame",
+      "sfx_cue": "0.5s heavy_footstep, 2.0s record_scratch",
+      "tts_narration": "헉 관장님. 그게 아니고요 제가 욱해서...",
+      "subtitle_text": "관장님 등판 X됐다"
+    },
+    {
+      "scene_number": 7,
+      "duration_sec": 6,
+      "stickman_action": "관장이 말없이 다가오더니 B의 배 위에 20kg짜리 철원판을 턱 얹어줌. 그리고 A의 가슴을 툭툭 치며 자세를 교정해 주고 엄지를 치켜세움. A는 감동의 눈물을 흘림.",
+      "camera_work": "관장과 A의 훈훈한 투샷에서 서서히 줌아웃",
+      "sfx_cue": "1.0s heavy_metal_clank, 3.0s sparkling_sound, 4.0s upbeat_success_music",
+      "tts_narration": "중량이 부족하네요. 회원님 등 좀 더 펴시고! 자 실시!",
+      "subtitle_text": "진정한 트루 참교육"
+    }
+  ],
+  "hashtags": [
+    "#스틱맨단편선','#사이다썰','#헬스장빌런','#참교육','#운동자극','#인간바벨','#블랙코미디"
+  ],
+  "calendar_render_event_id": "dryrun-73f492163fcd",
+  "calendar_upload_event_id": "dryrun-bf940add17b2",
+  "rendered_video_path": "C:\\Users\\user\\스틱맨 숏폼 자율 플라이휠 시스템\\stickman_flywheel\\pipeline_outputs\\rendered\\20261025_015910.mp4"
+}

@@ -1,0 +1,89 @@
+{
+  "episode_id": "20261025_032914",
+  "episode_title": "[사이다] 헬스장 스쿼트 랙 전세 낸 놈 참교육 ㅋㅋㅋ",
+  "target_emotion": "분노 후 압도적인 물리적 카타르시스",
+  "analysis": {
+    "discarded_surface_topic": "지옥철, 층간소음, 배달 누락, 회식 강요 등 대인관계 및 일상생활의 흔한 갈등 상황",
+    "extracted_core_desire": "이기적이고 뻔뻔하게 타인의 시간을 뺏는 무개념 빌런에게 대화가 아닌 즉각적이고 물리적인 인과응보를 먹이고 싶은 강렬한 보상 심리",
+    "transplanted_setting": "동네 헬스장 스쿼트 랙 (가장 치열한 자리 싸움과 눈치 싸움이 일어나는 공간)",
+    "twist_point": "말싸움 대신 빌런이 깔고 앉아있는 바벨에 200kg 원판을 순식간에 꽂아버리고 안전바를 뽑아 강제 하체 운동을 시켜버림"
+  },
+  "total_duration_sec": 30,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration_sec": 4,
+      "stickman_action": "A가 머뭇거리며 랙에 다가감. B는 랙 바벨 밑에 깔고 앉아 스마트폰만 쳐다보고 있음.",
+      "camera_work": "Zoom-in on B's phone",
+      "sfx_cue": "1.0s footstep, 2.5s annoying_ringtone",
+      "tts_narration": "해설: 동네 헬스장, 스쿼트 랙에 전세 낸 빌런 등장! A: 저기요, 혹시 얼마나 남으셨어요? B: 아, 저 이제 막 시작이요.",
+      "subtitle_text": "랙 전세 낸 빌런 등장"
+    },
+    {
+      "scene_number": 2,
+      "duration_sec": 4,
+      "stickman_action": "B가 빈 바벨을 메고 무릎을 딱 1cm 굽혔다 펴더니 바로 다시 주저앉아 폭풍 타자를 침. A의 머리 위로 붉은색 분노 마크 핑.",
+      "camera_work": "Screen Shake slightly",
+      "sfx_cue": "1.0s swoosh, 3.0s pop_sound",
+      "tts_narration": "해설: 스쿼트 딱 한 번 깔짝하더니, 십 분째 인스타만 보는 중. A: 와, 진짜 장난하나... 언제 끝나는 거야?",
+      "subtitle_text": "깔짝 1회, 폰질 10분"
+    },
+    {
+      "scene_number": 3,
+      "duration_sec": 5,
+      "stickman_action": "A가 두 손을 모으고 정중하게 부탁함. B는 턱을 치켜들고 한쪽 손으로 브이를 하며 셀카를 찍음.",
+      "camera_work": "Close-up on B's arrogant face",
+      "sfx_cue": "2.0s camera_shutter, 3.5s mocking_laugh",
+      "tts_narration": "A: 저기, 그럼 같이 쓰면 안 될까요? 금방 치고 빠질게요! B: 아, 저 슈퍼세트 중이라 흐름 끊겨서 안 됨요.",
+      "subtitle_text": "기적의 슈퍼세트 논리"
+    },
+    {
+      "scene_number": 4,
+      "duration_sec": 4,
+      "stickman_action": "A의 얼굴이 시뻘겋게 변하며 머리통이 밥솥처럼 김을 뿜어냄. B는 숏폼을 보며 낄낄댐.",
+      "camera_work": "Fast Zoom-in on A's face",
+      "sfx_cue": "1.0s steam_whistle, 2.5s tiktok_sound",
+      "tts_narration": "해설: 빈 봉 잡고 숏폼 보며 낄낄대는 빌런에 분노 폭발! B: 아, 이거 개웃기네 진짜!",
+      "subtitle_text": "분노 게이지 MAX"
+    },
+    {
+      "scene_number": 5,
+      "duration_sec": 4,
+      "stickman_action": "A가 갑자기 섬뜩한 썩소를 지음. 빛의 속도로 양쪽 바벨에 20kg 원판을 5개씩 쾅쾅 꽂아버림.",
+      "camera_work": "Fast Pan left and right",
+      "sfx_cue": "1.0s heavy_metal_clank, 2.5s fast_whoosh",
+      "tts_narration": "해설: 결국 빡친 헬창, 번뜩이는 눈빛으로 이십 킬로 원판을 꽂기 시작하는데! A: 흐름, 절대 안 끊기게 해드릴게요.",
+      "subtitle_text": "친절한 중량 추가 서비스"
+    },
+    {
+      "scene_number": 6,
+      "duration_sec": 5,
+      "stickman_action": "B가 당황해서 위를 쳐다보는 순간, A가 랙의 양쪽 안전핀을 뽑아 휙 던져버리고 쿨하게 뒤돌아섬.",
+      "camera_work": "Slow-motion on safety pin removal",
+      "sfx_cue": "1.5s metal_pull, 3.0s heavy_thud",
+      "tts_narration": "해설: 양쪽 안전핀까지 휙 뽑아 던져버리고 뒤돌아서는 주인공! B: 어어, 야 잠깐만, 너 뭐하는 짓이야! A: 득근하세요.",
+      "subtitle_text": "물리적 참교육"
+    },
+    {
+      "scene_number": 7,
+      "duration_sec": 4,
+      "stickman_action": "200kg 바벨이 B의 어깨를 짓눌러 B가 바닥에 개구리처럼 납작해짐. A는 배경에서 평온하게 덤벨 컬을 함.",
+      "camera_work": "Wide shot",
+      "sfx_cue": "0.5s cartoon_splat, 2.0s peaceful_bgm",
+      "tts_narration": "해설: 이백 킬로 바벨에 그대로 깔려 바닥에 납작해진 빌런! B: 으아악! 살려주세요, 사람 살려!",
+      "subtitle_text": "평화로운 동네 헬스장"
+    }
+  ],
+  "hashtags": [
+    "#헬스장빌런",
+    "#스쿼트랙",
+    "#참교육",
+    "#사이다",
+    "#스틱맨",
+    "#숏폼",
+    "#블랙코미디"
+  ],
+  "calendar_render_event_id": "dryrun-a5e6d85d46ba",
+  "calendar_upload_event_id": "dryrun-fd5607269354",
+  "rendered_video_path": "C:\\Users\\user\\스틱맨 숏폼 자율 플라이휠 시스템\\stickman_flywheel\\pipeline_outputs\\rendered\\20261025_032914.mp4"
+}

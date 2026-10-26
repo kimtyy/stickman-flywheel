@@ -1,0 +1,32 @@
+# Secrets & API Keys (절대 커밋 금지)
+.env
+*.env
+.streamlit/secrets.toml
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.ipynb
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary test & scratch files
+test_*.jpg
+test_*.png
+scratch*
+
+# Intermediate render frame cache (불필요한 수백 장의 중간 프레임 이미지 제외)
+stickman_flywheel/pipeline_outputs/audio/**/*.jpg
+stickman_flywheel/pipeline_outputs/audio/**/*.png
+stickman_flywheel/pipeline_outputs/audio/**/*.aac
+stickman_flywheel/pipeline_outputs/audio/**/master_audio_orig_glitch.wav
+stickman_flywheel/pipeline_outputs/audio/**/scene_01_orig_glitch.wav
+
+# BGM 대용량 WAV 파일 (Streamlit 웹 재생용 가벼운 MP3는 유지)
+stickman_flywheel/assets/bgm/*.wav
+!stickman_flywheel/assets/sfx/*.wav

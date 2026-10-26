@@ -1,0 +1,15 @@
+streamlit
+google-genai
+google-api-python-client
+google-auth
+google-auth-oauthlib
+pytrends
+pydantic
+python-dotenv
+edge-tts
+Pillow
+imageio-ffmpeg
+gTTS
+opencv-python-headless
+scipy
+numpy

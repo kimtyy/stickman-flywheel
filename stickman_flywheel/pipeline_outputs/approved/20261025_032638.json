@@ -1,0 +1,89 @@
+{
+  "episode_id": "20261025_032638",
+  "episode_title": "헬스장 벤치프레스 전세 낸 얌체족의 최후 ㅋㅋㅋ",
+  "target_emotion": "극대노 유발 후 즉각적이고 물리적인 참교육을 통한 폭발적 카타르시스",
+  "analysis": {
+    "discarded_surface_topic": "지옥철 출근, 층간소음, 배달 누락, 회식 강요, 주차 새치기 등 입력된 모든 표면적 일상 스트레스 소재",
+    "extracted_core_desire": "타인의 권리를 침해하면서도 일말의 죄책감조차 없는 뻔뻔한 얌체족에 대한 극심한 분노와, 이들의 뻔뻔함을 역이용해 합법적으로(?) 철저히 응징하고 싶은 사이다 참교육 열망",
+    "transplanted_setting": "헬스장 벤치프레스 구역 (운동 기구를 스마트폰 거치대나 침대처럼 쓰며 비키지 않는 얌체족과 그를 기다리는 회원의 대치 상황)",
+    "twist_point": "분노하여 화를 내는 대신, 얌체족의 '원판 좀 끼워달라'는 뻔뻔한 요구를 기꺼이 수용하는 척하며 바벨에 400kg을 세팅해 얌체족을 기구 아래 영원히 가둬버리는 블랙코미디 반전"
+  },
+  "total_duration_sec": 30,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration_sec": 4,
+      "stickman_action": "스틱맨 B가 벤치프레스에 누워 폰만 보며 낄낄거린다. 스틱맨 A는 팔짱을 끼고 짝다리를 짚은 채 온몸을 덜덜 떨며 노려본다.",
+      "camera_work": "Zoom-in on B's phone screen, then fast pan to A's annoyed face",
+      "sfx_cue": "0.5s annoying_laugh, 2.0s fast_tapping, 3.5s dramatic_tension",
+      "tts_narration": "A: 저기요, 다 쓰셨나요? B: 앗 넵 무반동으로 세트 사이 쉬는 중이요~",
+      "subtitle_text": "헬스장 스마트폰 망령 등장"
+    },
+    {
+      "scene_number": 2,
+      "duration_sec": 4,
+      "stickman_action": "배경의 시계바늘이 미친듯이 돌아간다. B는 여전히 누워서 거울 셀카를 찍고 있다. A의 머리 위로 붉은색 분노 증기가 뿜어져 나온다.",
+      "camera_work": "Fast clock spin effect, Screen Shake on A",
+      "sfx_cue": "0.5s clock_ticking, 2.0s camera_shutter, 3.0s boiling_kettle",
+      "tts_narration": "B: 오운완 폼 미쳤다ㅋㅋ A: (빠직) 저기, 20분째 쉬시는데요?",
+      "subtitle_text": "20분째 휴식 중 (환장)"
+    },
+    {
+      "scene_number": 3,
+      "duration_sec": 4,
+      "stickman_action": "B가 폰 화면에서 눈도 떼지 않고 귀찮다는 듯 손을 휘휘 젓는다. 빡친 A의 목 관절이 180도 꺾였다가 돌아온다.",
+      "camera_work": "Close-up on B's dismissive hand gesture",
+      "sfx_cue": "1.0s whoosh, 2.5s bone_crack",
+      "tts_narration": "B: 아, 급하시면 먼저 하실래요? 원판만 좀 끼워주시구~",
+      "subtitle_text": "급하면 님이 원판 끼우던가ㅋ"
+    },
+    {
+      "scene_number": 4,
+      "duration_sec": 5,
+      "stickman_action": "A의 두 눈에서 붉은 안광이 번쩍인다. 초고속으로 헬스장 구석에서 거대한 50kg 원판 8개를 양팔 가득 쓸어 담아 온다.",
+      "camera_work": "Dynamic Zoom-out, Speed-line background",
+      "sfx_cue": "0.5s super_saiyan_aura, 2.5s heavy_footsteps",
+      "tts_narration": "A: 아~ 먼저 해도 되나요? 개.이.득!",
+      "subtitle_text": "친절한 원판 배달 서비스"
+    },
+    {
+      "scene_number": 5,
+      "duration_sec": 5,
+      "stickman_action": "A가 B가 누워있는 벤치프레스 바벨 양쪽에 거대 원판들을 쾅쾅 내리꽂는다. 바벨이 엄청난 무게를 못 이기고 U자 형태로 휘어진다.",
+      "camera_work": "Impact Shake with every plate loaded",
+      "sfx_cue": "0.5s heavy_metal_clank, 1.5s heavy_metal_clank, 3.0s metal_bending",
+      "tts_narration": "B: 어? 어어? 잠깐만 무거워 읔!",
+      "subtitle_text": "400kg 세팅 완료!"
+    },
+    {
+      "scene_number": 6,
+      "duration_sec": 4,
+      "stickman_action": "B는 엄청난 바벨 무게에 가슴이 짓눌려 팔다리가 봉인된 채 개구리처럼 바둥거린다. A는 두 손을 탁탁 털며 여유롭게 미소 짓는다.",
+      "camera_work": "High angle looking down at trapped B",
+      "sfx_cue": "1.0s dust_off_hands, 2.5s struggle_groan",
+      "tts_narration": "A: 세트 끝나시면 부르세요~ 푹 쉬시고요!",
+      "subtitle_text": "편안한 휴식 제공 (강제)"
+    },
+    {
+      "scene_number": 7,
+      "duration_sec": 4,
+      "stickman_action": "힘이 빠진 B의 손에서 스마트폰이 수직 낙하해 안면에 정통으로 꽂힌다. B가 비명을 지르는 동안 A는 콧노래를 부르며 유유히 퇴장한다.",
+      "camera_work": "Freeze Frame on B's face getting hit by the phone, then quick fade to black",
+      "sfx_cue": "1.0s phone_smack, 1.5s comical_scream, 2.5s whistling",
+      "tts_narration": "B: 끄아아악! 살려줘! A: (휘파람 소리)",
+      "subtitle_text": "평생 쉬어라 ㅅㄱ"
+    }
+  ],
+  "hashtags": [
+    "#스틱맨",
+    "#헬스장민폐",
+    "#사이다",
+    "#참교육",
+    "#공감쇼츠",
+    "#블랙코미디",
+    "#반전"
+  ],
+  "calendar_render_event_id": "dryrun-333dc1491c7a",
+  "calendar_upload_event_id": "dryrun-63644aa44913",
+  "rendered_video_path": null
+}
