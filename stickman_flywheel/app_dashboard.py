@@ -54,19 +54,20 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-/* 기본 배경 & 전역 폰트 */
-html, body, [class*="css"] {
+/* 기본 배경 & 전역 폰트 및 순백색 텍스트 (#F8FAFC) */
+html, body, [class*="css"], .stMarkdown, p, span, label {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    color: #F3F4F6;
+    color: #F8FAFC !important;
 }
 
-/* 메인 딥 슬레이트 다크 배경 */
+/* 메인 딥 슬레이트 다크 배경 (#0B0F19 ~ #0F172A) */
 .stApp {
-    background-color: #0B0F19;
+    background-color: #0B0F19 !important;
     background-image: 
-        radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.07) 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
-    background-attachment: fixed;
+        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.09) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.03) 0%, transparent 60%) !important;
+    background-attachment: fixed !important;
 }
 
 /* 불필요한 기본 헤더 및 푸터 숨김 (스튜디오 몰입감 극대화) */
@@ -84,36 +85,116 @@ footer {
     visibility: hidden;
 }
 
-/* 블록 컨테이너 상하 여백 최적화 (배지 시인성 확보) */
+/* 블록 컨테이너 상하 여백 최적화 */
 .block-container {
-    padding-top: 2.8rem !important;
-    padding-bottom: 2.5rem !important;
-    max-width: 1440px !important;
+    padding-top: 2.2rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 1360px !important;
 }
 
 /* 사이드바 스타일링 */
 section[data-testid="stSidebar"] {
     background-color: #0E1322 !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 section[data-testid="stSidebar"] .block-container {
     padding-top: 1.5rem !important;
 }
 
-/* Stitch 카드 컨테이너 (반투명 다크 글래스모피즘) */
+/* ==========================================================================
+   2. 작업 흐름 기반 4단계 탭 (Tabs) 하이엔드 네온 스타일링
+   ========================================================================== */
+div[data-baseweb="tab-list"] {
+    background: rgba(15, 23, 42, 0.9) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 6px !important;
+    gap: 8px !important;
+    margin-bottom: 24px !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+button[data-baseweb="tab"] {
+    background: transparent !important;
+    color: #94A3B8 !important;
+    font-weight: 700 !important;
+    font-size: 0.96rem !important;
+    border-radius: 12px !important;
+    padding: 12px 22px !important;
+    border: none !important;
+    white-space: nowrap !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button[data-baseweb="tab"]:hover {
+    color: #FFFFFF !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
+    color: #FFFFFF !important;
+    font-weight: 800 !important;
+    box-shadow: 0 4px 18px rgba(99, 102, 241, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ==========================================================================
+   3. 모바일 가독성 & 시인성 극대화: 입력창 & 라벨 (#38BDF8 포인트 컬러)
+   ========================================================================== */
+/* 입력창 라벨을 눈에 확 띄는 스카이블루 (#38BDF8) 포인트 컬러로 통일 */
+.stTextInput label,
+.stTextArea label,
+.stSelectbox label,
+.stSlider label,
+.stDateInput label,
+.stRadio label {
+    color: #38BDF8 !important;
+    font-weight: 800 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.02em !important;
+    margin-bottom: 6px !important;
+    display: inline-block !important;
+}
+
+/* 모든 입력창 배경 명암(#0F172A)과 테두리 대비 대폭 강화 */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stSelectbox > div > div {
+    background-color: #0F172A !important;
+    border: 1.5px solid rgba(56, 189, 248, 0.35) !important;
+    border-radius: 12px !important;
+    color: #FFFFFF !important;
+    font-size: 0.98rem !important;
+    font-weight: 600 !important;
+    padding: 10px 14px !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus,
+.stSelectbox > div > div:focus-within {
+    border-color: #38BDF8 !important;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+    background-color: #131D33 !important;
+}
+
+/* 글래스모피즘 스튜디오 카드 컨테이너 */
 .stitch-card {
-    background: rgba(17, 24, 39, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 18px 22px;
-    margin-bottom: 16px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
-    transition: border-color 0.2s ease;
+    background: rgba(17, 24, 39, 0.88);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    padding: 22px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.2s ease, transform 0.2s ease;
 }
 .stitch-card:hover {
-    border-color: rgba(99, 102, 241, 0.3);
+    border-color: rgba(99, 102, 241, 0.4);
 }
 
 /* 상단 스튜디오 헤더 배지 */
@@ -121,66 +202,70 @@ section[data-testid="stSidebar"] .block-container {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border-radius: 9999px;
-    background: rgba(99, 102, 241, 0.12);
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    background: rgba(99, 102, 241, 0.14);
+    border: 1px solid rgba(99, 102, 241, 0.35);
     color: #A5B4FC;
-    font-size: 0.82rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    margin-bottom: 8px;
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
 }
 
 .studio-title {
-    font-size: 1.85rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
+    font-size: 2.1rem;
+    font-weight: 850;
+    letter-spacing: -0.025em;
     background: linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 50%, #94A3B8 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin: 0 0 12px 0;
+    margin: 0 0 16px 0;
 }
 
-/* 분석 브리핑 미니 카드 */
+/* 분석 브리핑 미니 카드 (고대비 가독성) */
 .brief-card {
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
-    padding: 12px 14px;
+    background: #0F172A;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 16px;
     height: 100%;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .brief-card-title {
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.85rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
 }
 .brief-card-body {
-    font-size: 0.9rem;
-    color: #CBD5E1;
-    line-height: 1.45;
+    font-size: 0.95rem;
+    color: #F8FAFC !important;
+    line-height: 1.55;
+    font-weight: 500;
 }
 
-/* 프라이머리 액션 버튼 (네온 인디고-바이올렛 그라데이션) */
+/* ==========================================================================
+   4. 버튼 시각적 위계 및 CTA 강조
+   ========================================================================== */
 div.stButton > button[kind="primary"],
 div.stButton > button[data-testid="baseButton-primary"] {
     background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
     color: #FFFFFF !important;
     border: none !important;
-    border-radius: 12px !important;
-    font-weight: 700 !important;
-    font-size: 0.95rem !important;
-    min-height: 46px !important;
-    padding: 0.6rem 1.4rem !important;
-    box-shadow: 0 4px 18px 0 rgba(99, 102, 241, 0.42) !important;
+    border-radius: 14px !important;
+    font-weight: 800 !important;
+    font-size: 1.05rem !important;
+    min-height: 52px !important;
+    padding: 0.75rem 1.6rem !important;
+    box-shadow: 0 6px 20px 0 rgba(99, 102, 241, 0.5) !important;
     transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 div.stButton > button[kind="primary"]:hover,
 div.stButton > button[data-testid="baseButton-primary"]:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px 0 rgba(139, 92, 246, 0.6) !important;
+    box-shadow: 0 10px 28px 0 rgba(139, 92, 246, 0.7) !important;
 }
 div.stButton > button[kind="primary"]:active,
 div.stButton > button[data-testid="baseButton-primary"]:active {
@@ -189,50 +274,53 @@ div.stButton > button[data-testid="baseButton-primary"]:active {
 
 /* 세컨더리 일반 버튼 */
 div.stButton > button:not([kind="primary"]):not([data-testid="baseButton-primary"]) {
-    background: rgba(30, 41, 59, 0.7) !important;
-    color: #E2E8F0 !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(30, 41, 59, 0.85) !important;
+    color: #F8FAFC !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-radius: 12px !important;
-    font-weight: 600 !important;
-    min-height: 44px !important;
+    font-weight: 700 !important;
+    min-height: 48px !important;
     transition: all 0.2s ease !important;
 }
 div.stButton > button:not([kind="primary"]):hover {
-    background: rgba(51, 65, 85, 0.9) !important;
-    border-color: rgba(99, 102, 241, 0.4) !important;
+    background: rgba(51, 65, 85, 1.0) !important;
+    border-color: #38BDF8 !important;
     color: #FFFFFF !important;
 }
 
-/* 다운로드 버튼 특화 스타일 */
+/* 다운로드 버튼 (에메랄드 네온) */
 div.stDownloadButton > button {
     background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
     color: #FFFFFF !important;
     border: none !important;
-    border-radius: 12px !important;
-    font-weight: 700 !important;
-    min-height: 46px !important;
-    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35) !important;
+    border-radius: 14px !important;
+    font-weight: 800 !important;
+    font-size: 1.05rem !important;
+    min-height: 52px !important;
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important;
+    transition: all 0.25s ease !important;
 }
 div.stDownloadButton > button:hover {
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.55) !important;
-    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 26px rgba(16, 185, 129, 0.65) !important;
+    transform: translateY(-2px) !important;
 }
 
-/* 스마트폰 베젤 프레임 (stVideo 자동 결속 폰 목업) */
+/* ==========================================================================
+   5. 모바일 프리뷰 스마트폰 프레임 (Phone Mockup)
+   ========================================================================== */
 div[data-testid="stVideo"] {
     background: #030712 !important;
     border: 8px solid #1E293B !important;
     border-radius: 38px !important;
     padding: 10px 8px 8px 8px !important;
     box-shadow: 
-        0 25px 50px -12px rgba(0, 0, 0, 0.8),
-        0 0 0 1px rgba(255, 255, 255, 0.08),
-        0 0 35px rgba(99, 102, 241, 0.18) !important;
+        0 25px 50px -12px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 0 35px rgba(99, 102, 241, 0.2) !important;
     max-width: 320px !important;
     margin: 0 auto 16px auto !important;
     position: relative !important;
 }
-/* 다이내믹 아일랜드 노치 */
 div[data-testid="stVideo"]::before {
     content: "";
     display: block;
@@ -241,9 +329,8 @@ div[data-testid="stVideo"]::before {
     background: #0F172A;
     border-radius: 12px;
     margin: 0 auto 8px auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
-/* 비디오 화면 본체 */
 div[data-testid="stVideo"] video {
     border-radius: 22px !important;
     width: 100% !important;
@@ -252,13 +339,12 @@ div[data-testid="stVideo"] video {
     background: #000 !important;
     display: block !important;
 }
-/* 하단 홈 인디케이터 바 */
 div[data-testid="stVideo"]::after {
     content: "";
     display: block;
     width: 90px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.35);
     border-radius: 2px;
     margin: 10px auto 2px auto;
 }
@@ -267,62 +353,72 @@ div[data-testid="stVideo"]::after {
 .spec-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    gap: 10px;
     width: 100%;
     margin-top: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 .spec-chip {
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
-    padding: 8px 12px;
-    font-size: 0.82rem;
+    background: #0F172A;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 10px 14px;
 }
 .spec-chip-label {
     color: #94A3B8;
-    font-size: 0.72rem;
-    font-weight: 600;
+    font-size: 0.74rem;
+    font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 .spec-chip-value {
-    color: #F8FAFC;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    margin-top: 2px;
-}
-
-/* 입력 필드 & Expander 다크 스타일링 */
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea,
-.stSelectbox > div > div {
-    background-color: rgba(15, 23, 42, 0.8) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 10px !important;
     color: #F8FAFC !important;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: #6366F1 !important;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25) !important;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    margin-top: 4px;
 }
 
 /* Expander 다크 글래스 */
 div[data-testid="stExpander"] {
-    background: rgba(17, 24, 39, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(17, 24, 39, 0.75) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.1) !important;
     border-radius: 14px !important;
     margin-bottom: 12px !important;
 }
 
-/* 모바일 반응형 미디어 쿼리 (@media (max-width: 768px)) */
+/* 단계 이동 가이드 배너 */
+.step-guide-card {
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px dashed rgba(56, 189, 248, 0.35);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #E0F2FE !important;
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   6. 모바일 반응형 미디어 쿼리 (@media (max-width: 768px))
+   ========================================================================== */
 @media (max-width: 768px) {
     .block-container {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
-        padding-top: 2.2rem !important;
+        padding-top: 2.0rem !important;
     }
-    /* 좌우 2단 분할 및 하위 컬럼을 단일 스택(Single Column)으로 자동 해제 */
+    div[data-baseweb="tab-list"] {
+        padding: 4px !important;
+        gap: 4px !important;
+    }
+    button[data-baseweb="tab"] {
+        font-size: 0.88rem !important;
+        padding: 10px 14px !important;
+    }
     div[data-testid="stHorizontalBlock"] {
         flex-direction: column !important;
         gap: 1.2rem !important;
@@ -337,20 +433,10 @@ div[data-testid="stExpander"] {
         flex: 1 1 100% !important;
     }
     div[data-testid="stVideo"] {
-        max-width: 280px !important;
-    }
-    .spec-grid {
-        grid-template-columns: 1fr 1fr !important;
-    }
-    /* 모바일 터치 타겟 44px 이상 확보 */
-    div.stButton > button,
-    div.stDownloadButton > button,
-    .stTextInput input,
-    .stSelectbox > div {
-        min-height: 48px !important;
+        max-width: 290px !important;
     }
     .studio-title {
-        font-size: 1.4rem !important;
+        font-size: 1.6rem !important;
     }
 }
 </style>
@@ -399,37 +485,38 @@ def get_video_specs(video_path: Optional[Path]) -> Optional[Dict[str, Any]]:
 
 
 # ==============================================================================
-# 3. 사이드바 (프로덕션 파이프라인 네비게이션)
+# 3. 사이드바 (글로벌 에피소드 관리 및 1단계 신규 생성)
 # ==============================================================================
 with st.sidebar:
     st.markdown("""
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 1.6rem;">🎬</span>
+            <span style="font-size: 1.7rem;">🎬</span>
             <div>
-                <div style="font-weight: 800; font-size: 1.15rem; color: #FFFFFF; letter-spacing: -0.01em;">Stickman Studio</div>
-                <div style="font-size: 0.75rem; color: #818CF8; font-weight: 600;">Autonomous Shorts Flywheel</div>
+                <div style="font-weight: 800; font-size: 1.2rem; color: #FFFFFF; letter-spacing: -0.01em;">Stickman Studio</div>
+                <div style="font-size: 0.76rem; color: #818CF8; font-weight: 700;">Autonomous Shorts Flywheel</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    if st.button("🚀 1단계: 신규 트렌드 감지 & 대본 생성", type="primary", use_container_width=True):
+    if st.button("🚀 1단계: 트렌드 감지 & 새 대본 생성", type="primary", use_container_width=True):
         with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중... (1~2분)"):
             try:
                 new_script = run_pipeline_step1()
                 st.session_state["force_select"] = ("pending", f"{new_script.episode_id}.json")
                 st.success(f"생성 완료: {new_script.episode_title}")
+                st.rerun()
             except Exception as e:
                 st.error(f"생성 실패: {e}")
 
-    st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;'>", unsafe_allow_html=True)
 
     pending_list = list_files(PENDING_DIR)
     approved_list = list_files(APPROVED_DIR)
 
     st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 10px; color: #94A3B8;">
-            <span>⏳ 대기 <strong style="color: #F59E0B;">{len(pending_list)}건</strong></span>
-            <span>✅ 승인 <strong style="color: #10B981;">{len(approved_list)}건</strong></span>
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 12px; color: #CBD5E1; font-weight: 600;">
+            <span>⏳ 검수 대기 <strong style="color: #FBBF24;">{len(pending_list)}건</strong></span>
+            <span>✅ 승인 완료 <strong style="color: #34D399;">{len(approved_list)}건</strong></span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -451,16 +538,16 @@ with st.sidebar:
     forced = st.session_state.pop("force_select", None)
     if forced and forced[1] in options:
         default_idx = options.index(forced[1])
-    selected = st.selectbox("대본 에피소드 선택", options, index=default_idx if options else None) if options else None
+    selected = st.selectbox("작업할 대본 에피소드", options, index=default_idx if options else None) if options else None
 
 
 # ==============================================================================
-# 4. 상단 스튜디오 헤더 & 알림 플래시
+# 4. 상단 스튜디오 타이틀 & 상태 플래시
 # ==============================================================================
 st.markdown("""
     <div class="studio-badge">
-        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #6366F1;"></span>
-        GOOGLE STITCH ARCHITECTURE · HIGH-END AI VIDEO STUDIO
+        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6366F1;"></span>
+        GOOGLE STITCH ARCHITECTURE · 4-STEP WORKFLOW STUDIO
     </div>
     <div class="studio-title">스틱맨 숏폼 자율 플라이휠 컨트롤 타워</div>
 """, unsafe_allow_html=True)
@@ -471,7 +558,7 @@ if "flash_err" in st.session_state:
     st.error(st.session_state.pop("flash_err"))
 
 if not selected:
-    st.info("선택된 대본이 없습니다. 사이드바에서 [1단계: 신규 트렌드 감지] 버튼을 눌러 대본을 생성하세요.")
+    st.info("선택된 대본이 없습니다. 상단 또는 사이드바의 **[🚀 1단계: 트렌드 감지 & 새 대본 생성]** 버튼을 눌러 대본을 생성하세요.")
     st.stop()
 
 folder = PENDING_DIR if is_pending else APPROVED_DIR
@@ -496,81 +583,138 @@ video_specs = get_video_specs(video_file)
 
 
 # ==============================================================================
-# 5. 2단 분할 스튜디오 레이아웃 (PC: 6.2 vs 3.8 / Mobile: 단일 스택)
+# 5. 작업 흐름 기반 4단계 탭 (Tab) 구조 적용
 # ==============================================================================
-col_left, col_right = st.columns([6.2, 3.8], gap="large")
+tab_step1, tab_step2, tab_step3, tab_step4 = st.tabs([
+    "🚀 Step 1: 기획 & 대본",
+    "✍️ Step 2: 대본 검수",
+    "🎵 Step 3: 오디오 연출",
+    "🎬 Step 4: 렌더링 & 배포"
+])
+
 
 # ------------------------------------------------------------------------------
-# [좌측 컬럼] 프로덕션 & 오디오 콘솔 (대본, 분석, BGM 믹싱, 렌더링, 업로드)
+# [Step 1: 기획 & 대본] (트렌드 감지, 소재 추출, 신규 대본 생성, 감정 역공학)
 # ------------------------------------------------------------------------------
-with col_left:
-    # 1. 감정 역공학 분석 브리핑 카드
+with tab_step1:
     st.markdown("""
         <div class="stitch-card">
-            <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                <span>🧠</span> 감정 역공학 분석 브리핑
+            <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                <span>🚀</span> AI 트렌드 감지 & 오리지널 대본 생성기
+            </div>
+            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 18px; line-height: 1.5;">
+                구글 트렌드 및 유튜브 실시간 급상승 숏폼 데이터를 감지하여, 표면적 소재를 버리고 대중이 열광하는 <strong>감정 결핍(코어 욕망)</strong>을 역공학해 독창적인 스틱맨 숏폼 대본으로 합성합니다.
+            </div>
+    """, unsafe_allow_html=True)
+
+    btn_step1 = st.button("✨ 신규 트렌드 감지 & 오리지널 대본 즉시 생성 (Gemini 2.5 Pro)", type="primary", use_container_width=True)
+    if btn_step1:
+        with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중... (1~2분 소요)"):
+            try:
+                new_script = run_pipeline_step1()
+                st.session_state["force_select"] = ("pending", f"{new_script.episode_id}.json")
+                st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
+                st.rerun()
+            except Exception as e:
+                st.error(f"생성 실패: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # 감정 역공학 분석 브리핑
+    st.markdown(f"""
+        <div class="stitch-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="font-weight: 800; font-size: 1.15rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span>🧠</span> 현재 에피소드 감정 역공학 분석 브리핑
+                </div>
+                <div style="font-size: 0.8rem; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 4px 10px; color: #A5B4FC; font-weight: 700;">
+                    에피소드: {script.episode_id}
+                </div>
             </div>
     """, unsafe_allow_html=True)
 
     b1, b2, b3 = st.columns(3)
     with b1:
         st.markdown(f"""
-            <div class="brief-card" style="border-left: 3px solid #EF4444;">
+            <div class="brief-card" style="border-top: 3px solid #EF4444;">
                 <div class="brief-card-title" style="color: #F87171;">🗑️ 버린 껍데기 소재</div>
                 <div class="brief-card-body">{script.analysis.discarded_surface_topic}</div>
             </div>
         """, unsafe_allow_html=True)
     with b2:
         st.markdown(f"""
-            <div class="brief-card" style="border-left: 3px solid #F59E0B;">
+            <div class="brief-card" style="border-top: 3px solid #F59E0B;">
                 <div class="brief-card-title" style="color: #FBBF24;">🔥 추출한 열광 포인트</div>
                 <div class="brief-card-body">{script.analysis.extracted_core_desire}</div>
             </div>
         """, unsafe_allow_html=True)
     with b3:
         st.markdown(f"""
-            <div class="brief-card" style="border-left: 3px solid #10B981;">
+            <div class="brief-card" style="border-top: 3px solid #10B981;">
                 <div class="brief-card-title" style="color: #34D399;">🌱 새로 이식한 상황</div>
                 <div class="brief-card-body">{script.analysis.transplanted_setting}</div>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown(f"""
-        <div style="margin-top: 12px; font-size: 0.8rem; color: #94A3B8;">
-            🎯 타겟 감정: <strong style="color: #CBD5E1;">{script.target_emotion}</strong> · 
-            ⏱️ 예상 길이: <strong style="color: #CBD5E1;">{script.total_duration_sec}초</strong> · 
+        <div style="margin-top: 16px; padding: 12px 16px; background: #0F172A; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; color: #CBD5E1;">
+            🎯 타겟 감정: <strong style="color: #38BDF8;">{script.target_emotion}</strong> · 
+            ⏱️ 예상 길이: <strong style="color: #38BDF8;">{script.total_duration_sec}초</strong> · 
             🏷️ {' '.join(script.hashtags)}
         </div>
         </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("""
+        <div class="step-guide-card">
+            <span>👉</span>
+            <div>기획 및 분석 확인이 완료되면 상단 <strong>[✍️ Step 2: 대본 검수]</strong> 탭으로 이동하여 씬별 대사와 연출을 확인하세요.</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------------------
+# [Step 2: 대본 검수] (에피소드 선택, 씬별 대사/연출 아코디언 에디터, 승인/폐기)
+# ------------------------------------------------------------------------------
+with tab_step2:
+    st.markdown("""
+        <div class="stitch-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div style="font-weight: 800; font-size: 1.15rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span>✍️</span> 5분 휴먼 폴리싱 대본 에디터
+                </div>
+    """, unsafe_allow_html=True)
+
     if not is_pending:
         st.markdown(f"""
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.85rem; color: #6EE7B7;">
-                ✅ <strong>승인 완료 대본 (읽기 전용 모드)</strong> — 캘린더 렌더 이벤트: <code>{script.calendar_render_event_id}</code>
+            <div style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 8px; padding: 4px 12px; color: #34D399; font-weight: 700;">
+                ✅ 승인 완료 대본 (읽기 전용) — 캘린더 ID: {script.calendar_render_event_id}
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div style="font-size: 0.8rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 4px 12px; color: #FBBF24; font-weight: 700;">
+                ⏳ 검수 대기 (수정 가능 모드)
             </div>
         """, unsafe_allow_html=True)
 
-    # 2. 휴먼 폴리싱 대본 에디터
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 14px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                <span>✍️</span> 5분 휴먼 폴리싱 대본 에디터
-            </div>
-    """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     disabled = not is_pending
     title = st.text_input("에피소드 제목", script.episode_title, key=f"{key}_title", disabled=disabled)
-    twist = st.text_area("결말 반전 포인트 (3초 Hook)", script.analysis.twist_point, key=f"{key}_twist", disabled=disabled, height=68)
+    twist = st.text_area("결말 3초 반전 포인트 (사이다 Hook)", script.analysis.twist_point, key=f"{key}_twist", disabled=disabled, height=68)
 
     scene_inputs = []
     for sc in script.scenes:
         n = sc.scene_number
         with st.expander(f"씬 {n} · {sc.duration_sec}초 · {sc.subtitle_text}", expanded=(n == 1)):
-            action = st.text_area("스틱맨 액션 / 연출 (stickman_action)", sc.stickman_action, key=f"{key}_a{n}", disabled=disabled, height=60)
-            narration = st.text_area("TTS 대사 (tts_narration)", sc.tts_narration, key=f"{key}_n{n}", disabled=disabled, height=60)
-            subtitle = st.text_input("자막 텍스트 (subtitle_text)", sc.subtitle_text, key=f"{key}_s{n}", disabled=disabled)
-            sfx = st.text_input("효과음 큐 (sfx_cue)", sc.sfx_cue, key=f"{key}_f{n}", disabled=disabled)
+            col_sc1, col_sc2 = st.columns([1, 1])
+            with col_sc1:
+                action = st.text_area("스틱맨 액션 / 연출 (stickman_action)", sc.stickman_action, key=f"{key}_a{n}", disabled=disabled, height=65)
+                subtitle = st.text_input("자막 텍스트 (subtitle_text)", sc.subtitle_text, key=f"{key}_s{n}", disabled=disabled)
+            with col_sc2:
+                narration = st.text_area("TTS 성우 대사 (tts_narration)", sc.tts_narration, key=f"{key}_n{n}", disabled=disabled, height=65)
+                sfx = st.text_input("효과음 큐 (sfx_cue)", sc.sfx_cue, key=f"{key}_f{n}", disabled=disabled)
             scene_inputs.append((n, action, narration, subtitle, sfx))
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -587,35 +731,36 @@ with col_left:
             scene["sfx_cue"] = sfx
         return StickmanScriptOutput.model_validate(data)
 
-    # 3. 승인 및 캘린더 등록 액션 바 (Pending 모드 시 활성화)
+    # 승인 및 캘린더 등록 액션 바
     if is_pending:
         st.markdown("""
             <div class="stitch-card">
-                <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>📅</span> 대본 승인 및 파이프라인 가동
+                <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 12px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span>📅</span> 대본 승인 및 구글 캘린더 스케줄 등록
                 </div>
         """, unsafe_allow_html=True)
 
-        a, b, c = st.columns([1.2, 2.0, 1.0])
-        target_date = a.date_input("스케줄 기준일", value=date.today())
-        with b:
+        col_act1, col_act2, col_act3 = st.columns([1.2, 2.0, 1.0])
+        with col_act1:
+            target_date = st.date_input("스케줄 기준 일자", value=date.today())
+        with col_act2:
             st.write("")
             approve = st.button("✅ 대본 최종 승인 및 캘린더 등록", type="primary", use_container_width=True)
-        with c:
+        with col_act3:
             st.write("")
-            discard = st.button("🗑️ 폐기", use_container_width=True)
+            discard = st.button("🗑️ 폐기 (부적합)", use_container_width=True)
 
         if approve:
             try:
                 edited = build_edited()
                 file_path.write_text(edited.model_dump_json(indent=2), encoding="utf-8")
-                with st.spinner("캘린더 등록 중..."):
+                with st.spinner("캘린더 등록 및 상태 갱신 중..."):
                     mgr = CalendarManager()
                     result = mgr.schedule_episode_pipeline(edited, target_date)
                 st.session_state["flash"] = (
-                    f"승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
-                    f"렌더 {result.calendar_render_event_id} / "
-                    f"업로드 {result.calendar_upload_event_id}"
+                    f"🎉 승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
+                    f"렌더 이벤트: {result.calendar_render_event_id} / "
+                    f"업로드 이벤트: {result.calendar_upload_event_id}"
                 )
             except Exception as e:
                 st.session_state["flash_err"] = f"승인 실패: {e}"
@@ -628,11 +773,25 @@ with col_left:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # 4. 오디오 믹싱 & BGM 콘솔 (Step 3 설정)
+    st.markdown("""
+        <div class="step-guide-card">
+            <span>👉</span>
+            <div>대본 검수가 완료되었다면 상단 <strong>[🎵 Step 3: 오디오 연출]</strong> 탭으로 이동하여 BGM 및 성우 믹싱을 설정하세요.</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------------------
+# [Step 3: 오디오 연출] (BGM 선택, 오디오 더킹 슬라이더 20%, 보컬 필터)
+# ------------------------------------------------------------------------------
+with tab_step3:
     st.markdown("""
         <div class="stitch-card">
-            <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 14px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                <span>🎵</span> BGM 오디오 더킹 & 보컬 포켓팅 콘솔
+            <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                <span>🎵</span> 배경음악(BGM) 믹싱 & 오디오 더킹 콘솔
+            </div>
+            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 18px; line-height: 1.5;">
+                영상에 들어갈 BGM 트랙을 선택하고, 성우 대사 출력 시 음악 볼륨을 자동으로 감쇠(오디오 더킹)할 비율 및 노래 가사와 목소리의 충돌을 차단하는 <strong>보컬 억제 필터</strong>를 조율합니다.
             </div>
     """, unsafe_allow_html=True)
 
@@ -647,16 +806,15 @@ with col_left:
         if t["ext"] == ".WAV" and t["stem"] not in mp3_stems:
             bgm_options.append(t["name"])
 
-    col_bgm_l, col_bgm_r = st.columns([1.2, 1.0])
-    with col_bgm_l:
-        # BGM 기본값 매핑
+    col_bgm_cfg, col_bgm_pre = st.columns([1.2, 1.0])
+    with col_bgm_cfg:
         default_bgm_idx = 0
         preferred_bgm = "Neon Skyline_5-2.wav"
         if preferred_bgm in bgm_options:
             default_bgm_idx = bgm_options.index(preferred_bgm)
 
         selected_bgm = st.selectbox(
-            "🎼 배경음악(BGM) 트랙",
+            "🎼 배경음악(BGM) 트랙 선택",
             options=bgm_options,
             index=default_bgm_idx,
             key=f"{key}_bgm_track",
@@ -670,33 +828,65 @@ with col_left:
             step=1,
             format="%d%%",
             key=f"{key}_bgm_vol",
-            help="성우 대사가 출력되는 동안 BGM이 20% 볼륨으로 자동 감쇠(오디오 더킹)됩니다."
+            help="성우 대사가 출력되는 동안 BGM이 20% 볼륨(약 -14dB)으로 자동 감쇠(오디오 더킹)되며, 대사 사이 무음 구간에서는 자연스럽게 볼륨이 상승합니다."
         )
         bgm_vocal_filter = st.checkbox(
-            "☑️ 보컬 억제 필터 (Vocal Pocketing)",
+            "☑️ 보컬 억제 필터 (가사 있는 BGM용 Vocal Pocketing)",
             value=True,
             key=f"{key}_bgm_vocal_filter",
-            help="BGM의 보컬 주파수 대역(400Hz~3,200Hz)을 감쇠하고 센터 보컬을 억제하여 성우 대사와 충돌하지 않도록 분리합니다."
+            help="BGM의 보컬 주파수 대역(400Hz~3,200Hz)을 감쇠하고 센터 보컬을 억제(Mid-Side 분리)하여 성우 대사와 노래 가사가 충돌하지 않도록 분리합니다."
         )
 
-    with col_bgm_r:
+    with col_bgm_pre:
         if selected_bgm != "BGM 없음":
             preview_path = BGM_DIR / selected_bgm
             if preview_path.exists():
-                st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; color: #A5B4FC; margin-bottom: 6px;'>🎧 음원 미리듣기 (Preview)</div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style="background: #0F172A; border: 1.5px solid rgba(56, 189, 248, 0.3); border-radius: 14px; padding: 18px; margin-top: 14px;">
+                        <div style="font-size: 0.88rem; font-weight: 800; color: #38BDF8; margin-bottom: 8px;">🎧 음원 실시간 미리듣기</div>
+                        <div style="font-size: 0.85rem; color: #CBD5E1; margin-bottom: 10px; font-family: 'JetBrains Mono', monospace;">트랙: {selected_bgm}</div>
+                """, unsafe_allow_html=True)
                 st.audio(str(preview_path))
-                st.caption(f"선택 트랙: `{selected_bgm}`")
+                st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.markdown("""
-                <div style="background: rgba(15, 23, 42, 0.5); border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; padding: 22px; text-align: center; color: #94A3B8; font-size: 0.85rem;">
-                    🎧 배경음악을 선택하시면<br>여기서 실시간 미리듣기가 가능합니다.
+                <div style="background: #0F172A; border: 1px dashed rgba(255,255,255,0.15); border-radius: 14px; padding: 32px 20px; text-align: center; color: #94A3B8; font-size: 0.88rem; margin-top: 14px;">
+                    🎧 배경음악을 선택하시면<br>여기서 실시간 미리듣기가 지원됩니다.
                 </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0;'>", unsafe_allow_html=True)
+    # 멀티 성우 캐스팅 요약
+    st.markdown("""
+        <div style="margin-top: 18px; padding: 14px 18px; background: #0F172A; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.88rem; color: #CBD5E1;">
+            🎙️ <strong>Gemini 2.5 Native TTS 멀티 보이스 캐스팅</strong>: 
+            주인공 A(블루 나시 - 코레), 빌런 B(오렌지 상의 - 펜릴/퍽), 해설(딥 내레이션)이 자동으로 배역 매칭되어 감정 연기로 합성됩니다.
+        </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    # 렌더링 실행 버튼
-    btn_label = "🎬 3단계: 스틱맨 MP4 쇼츠 다시 렌더링 (강제 덮어쓰기)" if video_file else "🎬 3단계: 스틱맨 MP4 쇼츠 즉시 렌더링 실행"
+    st.markdown("""
+        <div class="step-guide-card">
+            <span>👉</span>
+            <div>오디오 연출 설정이 완료되면 상단 <strong>[🎬 Step 4: 렌더링 & 배포]</strong> 탭으로 이동하여 최종 영상을 확인하세요.</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------------------
+# [Step 4: 렌더링 & 배포] (MP4 렌더링 버튼, 모바일 프리뷰, 다운로드, 유튜브 업로드)
+# ------------------------------------------------------------------------------
+with tab_step4:
+    st.markdown("""
+        <div class="stitch-card">
+            <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                <span>🎬</span> 스틱맨 쇼츠 비디오 렌더링
+            </div>
+            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 16px;">
+                2세대 캡슐 관절 스틱맨 애니메이션, 대사 오디오 1:1 싱크 프레임, 다이나믹 카메라 연출 및 BGM 믹싱을 거쳐 <strong>1080×1920 (9:16) MP4 숏폼 영상</strong>을 완성합니다.
+            </div>
+    """, unsafe_allow_html=True)
+
+    btn_label = "🎬 4단계: 스틱맨 MP4 쇼츠 다시 렌더링 (강제 덮어쓰기)" if video_file else "🎬 4단계: 스틱맨 MP4 쇼츠 즉시 렌더링 실행"
     if st.button(btn_label, type="primary", use_container_width=True):
         bar = st.progress(0.0)
         status_box = st.empty()
@@ -705,7 +895,7 @@ with col_left:
             bar.progress(min(max(frac, 0.0), 1.0))
             status_box.caption(msg)
 
-        with st.spinner("스틱맨 2세대 관절 기구학 계산, 오디오 믹싱 및 비디오 렌더링 진행 중..."):
+        with st.spinner("스틱맨 2세대 관절 기구학 계산, 오디오 믹싱 및 FFmpeg 비디오 렌더링 진행 중..."):
             try:
                 importlib.reload(module3_renderer)
                 renderer = module3_renderer.StickmanShortRenderer()
@@ -718,138 +908,140 @@ with col_left:
                     vocal_pocketing=bgm_vocal_filter
                 )
                 st.session_state[f"video_reload_{script.episode_id}"] = time.time()
-                st.success(f"렌더링 완료: {Path(rendered_out).name}")
+                st.session_state["flash"] = f"🎉 렌더링 완료: {Path(rendered_out).name}"
                 st.rerun()
             except Exception as e:
                 st.error(f"렌더링 실패: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 5. 유튜브 쇼츠 자동 업로드 콘솔 (Step 4)
-    if video_file is not None and Path(video_file).exists():
-        st.markdown("""
-            <div class="stitch-card">
-                <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>🚀</span> 4단계: 유튜브 쇼츠 자동 업로드 콘솔
-                </div>
-        """, unsafe_allow_html=True)
-
-        meta = generate_short_metadata(script)
-
-        with st.expander("📦 자동 패키징된 유튜브 메타데이터", expanded=False):
-            st.text_input("유튜브 제목 (#shorts 포함)", value=meta["title"], key="yt_title_input")
-            st.text_area("설명란 (Description)", value=meta["description"], height=120, key="yt_desc_input")
-            st.caption(f"🏷️ 태그 ({len(meta['tags'])}개): {', '.join(meta['tags'][:8])}")
-
-        up_c1, up_c2 = st.columns([1.2, 1.0])
-        with up_c1:
-            privacy_choice = st.selectbox(
-                "공개 범위",
-                ["public (전체 공개)", "unlisted (일부 공개)", "private (비공개)"],
-                index=0,
-                key="yt_privacy_select"
-            )
-            priv = privacy_choice.split()[0]
-        with up_c2:
-            st.caption("🔒 OAuth 미인증 환경에서는 안전한 시뮬레이션(Dry-Run) 모드로 작동합니다.")
-
-        if st.button("🚀 유튜브 쇼츠 즉시 업로드 실행", type="primary", use_container_width=True):
-            with st.spinner("메타데이터 검증 및 유튜브 업로드 파이프라인 진행 중..."):
-                try:
-                    importlib.reload(module4_uploader)
-                    upload_res = module4_uploader.run_pipeline_step4(
-                        script,
-                        video_path=Path(video_file),
-                        privacy_status=priv
-                    )
-                    if upload_res.get("dry_run"):
-                        st.success(f"✅ {upload_res['message']}")
-                        st.info(f"🔗 [시뮬레이션 쇼츠 링크]({upload_res['video_url']}) · 영상 ID: `{upload_res['video_id']}` ({upload_res['file_size_mb']}MB)")
-                    else:
-                        st.balloons()
-                        st.success(f"🎉 {upload_res['message']} 영상 ID: `{upload_res['video_id']}`")
-                        st.markdown(f"👉 **[유튜브 쇼츠 바로가기]({upload_res['video_url']})**")
-
-                    with st.expander("📋 업로드 응답 세부 결과", expanded=False):
-                        st.json(upload_res)
-                except Exception as e:
-                    st.error(f"업로드 실행 실패: {e}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ------------------------------------------------------------------------------
-# [우측 컬럼] 스마트폰 프리뷰 모니터 & 렌더링 독 (Phone Mockup Bezel)
-# ------------------------------------------------------------------------------
-with col_right:
-    st.markdown("""
-        <div class="stitch-card" style="padding-bottom: 24px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>📱</span> 모바일 프리뷰 모니터
-                </div>
-                <div style="font-size: 0.75rem; color: #10B981; font-weight: 700; background: rgba(16, 185, 129, 0.12); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25);">
-                    9:16 SHORTS
-                </div>
-            </div>
-    """, unsafe_allow_html=True)
-
+    # 모바일 프리뷰 모니터 & 렌더링 독 (한 화면에 직관적으로 들어오는 최적화 레이아웃)
     if video_file is not None and Path(video_file).exists():
         video_bytes = Path(video_file).read_bytes()
 
-        # 스마트폰 프레임 내부 비디오 재생 (CSS pseudo-elements로 상단 노치/하단 홈바 자동 렌더링)
-        st.video(video_bytes)
+        col_v_monitor, col_v_info = st.columns([1.0, 1.2], gap="large")
 
-        # 렌더링 비디오 스펙 칩 그리드
-        dur_text = f"{video_specs['duration_sec']:.2f}s" if (video_specs and video_specs['duration_sec']) else "51.80s"
-        size_text = f"{video_specs['size_mb']:.1f} MB" if video_specs else "15.5 MB"
-        fps_text = f"{int(video_specs['fps'])} FPS" if video_specs else "30 FPS"
-        frame_text = f"{video_specs['frame_cnt']} frames" if (video_specs and video_specs['frame_cnt']) else "1,554 frames"
-
-        st.markdown(f"""
-            <div class="spec-grid">
-                <div class="spec-chip">
-                    <div class="spec-chip-label">해상도 / 비율</div>
-                    <div class="spec-chip-value">1080×1920 (9:16)</div>
-                </div>
-                <div class="spec-chip">
-                    <div class="spec-chip-label">재생 시간 (Duration)</div>
-                    <div class="spec-chip-value" style="color: #60A5FA;">{dur_text}</div>
-                </div>
-                <div class="spec-chip">
-                    <div class="spec-chip-label">프레임 레이트</div>
-                    <div class="spec-chip-value">{fps_text} ({frame_text})</div>
-                </div>
-                <div class="spec-chip">
-                    <div class="spec-chip-label">파일 용량</div>
-                    <div class="spec-chip-value" style="color: #34D399;">{size_text}</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # 다운로드 버튼
-        st.download_button(
-            "📥 MP4 완성 영상 다운로드",
-            data=video_bytes,
-            file_name=f"{script.episode_id}.mp4",
-            mime="video/mp4",
-            use_container_width=True
-        )
-
-    else:
-        # 비디오 미생성 시 안내 플레이스홀더 (스마트폰 베젤 형태 유지)
-        st.markdown("""
-            <div style="background: #030712; border: 8px solid #1E293B; border-radius: 38px; padding: 12px 8px; max-width: 320px; margin: 0 auto 16px auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8), 0 0 35px rgba(99,102,241,0.15);">
-                <div style="width: 80px; height: 14px; background: #0F172A; border-radius: 12px; margin: 0 auto 12px auto; border: 1px solid rgba(255,255,255,0.08);"></div>
-                <div style="min-height: 440px; background: #0A0E1A; border-radius: 22px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 24px;">
-                    <span style="font-size: 2.8rem; margin-bottom: 12px; opacity: 0.6;">🎬</span>
-                    <div style="font-weight: 700; color: #E2E8F0; margin-bottom: 6px;">렌더링 대기 중</div>
-                    <div style="font-size: 0.8rem; color: #64748B; line-height: 1.5; max-width: 200px;">
-                        좌측 콘솔에서 BGM 설정 후 <strong>[3단계 렌더링 실행]</strong>을 누르면 실시간 재생됩니다.
+        with col_v_monitor:
+            st.markdown("""
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div style="font-weight: 800; font-size: 1.05rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                        <span>📱</span> 모바일 프리뷰 모니터
+                    </div>
+                    <div style="font-size: 0.76rem; color: #10B981; font-weight: 800; background: rgba(16, 185, 129, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                        9:16 SHORTS
                     </div>
                 </div>
-                <div style="width: 90px; height: 4px; background: rgba(255, 255, 255, 0.28); border-radius: 2px; margin: 12px auto 2px auto;"></div>
+            """, unsafe_allow_html=True)
+
+            # 스마트폰 프레임 내부 비디오 재생 (CSS pseudo-elements로 상단 노치/하단 홈바 자동 렌더링)
+            st.video(video_bytes)
+
+        with col_v_info:
+            st.markdown("""
+                <div style="font-weight: 800; font-size: 1.05rem; color: #FFFFFF; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span>📊</span> 렌더링 비디오 스펙 & 다운로드
+                </div>
+            """, unsafe_allow_html=True)
+
+            dur_text = f"{video_specs['duration_sec']:.2f}s" if (video_specs and video_specs['duration_sec']) else "51.80s"
+            size_text = f"{video_specs['size_mb']:.1f} MB" if video_specs else "15.5 MB"
+            fps_text = f"{int(video_specs['fps'])} FPS" if video_specs else "30 FPS"
+            frame_text = f"{video_specs['frame_cnt']} frames" if (video_specs and video_specs['frame_cnt']) else "1,554 frames"
+
+            st.markdown(f"""
+                <div class="spec-grid">
+                    <div class="spec-chip">
+                        <div class="spec-chip-label">해상도 / 비율</div>
+                        <div class="spec-chip-value">1080×1920 (9:16)</div>
+                    </div>
+                    <div class="spec-chip">
+                        <div class="spec-chip-label">재생 시간 (Duration)</div>
+                        <div class="spec-chip-value" style="color: #38BDF8;">{dur_text}</div>
+                    </div>
+                    <div class="spec-chip">
+                        <div class="spec-chip-label">프레임 레이트</div>
+                        <div class="spec-chip-value">{fps_text} ({frame_text})</div>
+                    </div>
+                    <div class="spec-chip">
+                        <div class="spec-chip-label">파일 용량</div>
+                        <div class="spec-chip-value" style="color: #34D399;">{size_text}</div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            # 다운로드 버튼 (대형 에메랄드 CTA)
+            st.download_button(
+                "📥 완성된 MP4 영상 즉시 다운로드",
+                data=video_bytes,
+                file_name=f"{script.episode_id}.mp4",
+                mime="video/mp4",
+                use_container_width=True
+            )
+
+            # 4단계 유튜브 쇼츠 자동 업로드 콘솔
+            st.markdown("""
+                <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="font-weight: 800; font-size: 1.05rem; color: #FFFFFF; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <span>🚀</span> 유튜브 쇼츠 자동 업로드 콘솔
+                    </div>
+            """, unsafe_allow_html=True)
+
+            meta = generate_short_metadata(script)
+
+            with st.expander("📦 자동 패키징된 유튜브 메타데이터", expanded=False):
+                st.text_input("유튜브 제목 (#shorts 포함)", value=meta["title"], key="yt_title_input")
+                st.text_area("설명란 (Description)", value=meta["description"], height=100, key="yt_desc_input")
+                st.caption(f"🏷️ 태그 ({len(meta['tags'])}개): {', '.join(meta['tags'][:8])}")
+
+            up_c1, up_c2 = st.columns([1.2, 1.0])
+            with up_c1:
+                privacy_choice = st.selectbox(
+                    "공개 범위",
+                    ["public (전체 공개)", "unlisted (일부 공개)", "private (비공개)"],
+                    index=0,
+                    key="yt_privacy_select"
+                )
+                priv = privacy_choice.split()[0]
+            with up_c2:
+                st.write("")
+                st.write("")
+                st.caption("🔒 미인증 시 시뮬레이션(Dry-Run)")
+
+            if st.button("🚀 유튜브 쇼츠 자동 업로드 실행", type="primary", use_container_width=True):
+                with st.spinner("메타데이터 검증 및 유튜브 업로드 파이프라인 진행 중..."):
+                    try:
+                        importlib.reload(module4_uploader)
+                        upload_res = module4_uploader.run_pipeline_step4(
+                            script,
+                            video_path=Path(video_file),
+                            privacy_status=priv
+                        )
+                        if upload_res.get("dry_run"):
+                            st.success(f"✅ {upload_res['message']}")
+                            st.info(f"🔗 [시뮬레이션 쇼츠 링크]({upload_res['video_url']}) · 영상 ID: `{upload_res['video_id']}` ({upload_res['file_size_mb']}MB)")
+                        else:
+                            st.balloons()
+                            st.success(f"🎉 {upload_res['message']} 영상 ID: `{upload_res['video_id']}`")
+                            st.markdown(f"👉 **[유튜브 쇼츠 바로가기]({upload_res['video_url']})**")
+
+                        with st.expander("📋 업로드 응답 세부 결과", expanded=False):
+                            st.json(upload_res)
+                    except Exception as e:
+                        st.error(f"업로드 실행 실패: {e}")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    else:
+        st.markdown("""
+            <div style="background: #030712; border: 8px solid #1E293B; border-radius: 38px; padding: 12px 8px; max-width: 320px; margin: 20px auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.85), 0 0 35px rgba(99,102,241,0.2);">
+                <div style="width: 80px; height: 14px; background: #0F172A; border-radius: 12px; margin: 0 auto 12px auto; border: 1px solid rgba(255,255,255,0.1);"></div>
+                <div style="min-height: 420px; background: #0A0E1A; border-radius: 22px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 24px;">
+                    <span style="font-size: 3rem; margin-bottom: 12px; opacity: 0.6;">🎬</span>
+                    <div style="font-weight: 800; color: #FFFFFF; font-size: 1.1rem; margin-bottom: 8px;">렌더링 대기 중</div>
+                    <div style="font-size: 0.88rem; color: #94A3B8; line-height: 1.5; max-width: 210px;">
+                        상단의 <strong>[🎬 4단계: MP4 쇼츠 렌더링 실행]</strong> 버튼을 누르면 스마트폰 모니터에 즉시 고화질로 렌더링됩니다.
+                    </div>
+                </div>
+                <div style="width: 90px; height: 4px; background: rgba(255, 255, 255, 0.35); border-radius: 2px; margin: 12px auto 2px auto;"></div>
             </div>
         """, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
