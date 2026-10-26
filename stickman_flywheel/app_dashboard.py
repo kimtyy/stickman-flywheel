@@ -638,8 +638,9 @@ def format_episode_label(item) -> str:
         return f"{prefix} {fname}"
     return str(item)
 
-# 강제 선택(force_select) 또는 활성 에피소드 ID(active_episode_id) 감지 및 위젯 세션 상태 직접 동기화
-forced = st.session_state.pop("force_select", None)
+# 강제 선택(target_episode_to_select / force_select) 또는 활성 에피소드 ID(active_episode_id) 감지 및 위젯 세션 상태 직접 동기화
+target_to_select = st.session_state.pop("target_episode_to_select", None)
+forced = st.session_state.pop("force_select", None) or target_to_select
 target_fname = None
 
 if forced:
@@ -647,7 +648,7 @@ if forced:
 elif "active_episode_id" in st.session_state and st.session_state["active_episode_id"]:
     target_fname = f"{st.session_state['active_episode_id']}.json"
 
-# target_fname이 있으면 episode_items에서 일치하는 (status, fname) 아이템을 찾아 selectbox 세션 상태 직접 갱신
+# target_fname이 있으면 episode_items에서 일치하는 (status, fname) 아이템을 찾아 selectbox 세션 상태 직접 갱신 (위젯 생성 전 1회만 안전하게 설정)
 if target_fname:
     for item in episode_items:
         if item[1] == target_fname or target_fname in item[1]:
@@ -822,8 +823,7 @@ with tab_step1:
             if rsvp_status.get("status") == "approved":
                 ep_id = rsvp_status['episode_id']
                 st.session_state["active_episode_id"] = ep_id
-                st.session_state["force_select"] = ("approved", f"{ep_id}.json")
-                st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
+                st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
                 st.session_state["flash"] = rsvp_status.get("message", "승인 완료!")
                 st.balloons()
                 st.rerun()
@@ -881,8 +881,7 @@ with tab_step1:
                         if res.get("status") == "approved":
                             ep_id = c['episode_id']
                             st.session_state["active_episode_id"] = ep_id
-                            st.session_state["force_select"] = ("approved", f"{ep_id}.json")
-                            st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
+                            st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
                             st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
                             st.balloons()
                             st.rerun()
@@ -970,8 +969,7 @@ with tab_step1:
         if timeout_res.get("triggered"):
             ep_id = timeout_res['episode_id']
             st.session_state["active_episode_id"] = ep_id
-            st.session_state["force_select"] = ("approved", f"{ep_id}.json")
-            st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
+            st.session_state["target_episode_to_select"] = ("approved", f"{ep_id}.json")
             st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
             st.balloons()
             st.rerun()
@@ -1009,8 +1007,7 @@ with tab_step1:
                 new_script = run_pipeline_step1()
                 ep_id = new_script.episode_id
                 st.session_state["active_episode_id"] = ep_id
-                st.session_state["force_select"] = ("pending", f"{ep_id}.json")
-                st.session_state["active_episode_selector"] = ("pending", f"{ep_id}.json")
+                st.session_state["target_episode_to_select"] = ("pending", f"{ep_id}.json")
                 st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
                 st.rerun()
             except Exception as e:
@@ -1162,8 +1159,7 @@ with tab_step2:
                         mgr = CalendarManager()
                         result = mgr.schedule_episode_pipeline(edited, target_date)
                     st.session_state["active_episode_id"] = result.episode_id
-                    st.session_state["force_select"] = ("approved", f"{result.episode_id}.json")
-                    st.session_state["active_episode_selector"] = ("approved", f"{result.episode_id}.json")
+                    st.session_state["target_episode_to_select"] = ("approved", f"{result.episode_id}.json")
                     st.session_state["flash"] = (
                         f"🎉 승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
                         f"렌더 이벤트: {result.calendar_render_event_id} / "
