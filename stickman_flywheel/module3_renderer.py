@@ -48,7 +48,8 @@ AUDIO_DIR = BASE_DIR / "pipeline_outputs" / "audio"
 ASSETS_DIR = BASE_DIR / "assets"
 SFX_DIR = ASSETS_DIR / "sfx"
 BGM_DIR = ASSETS_DIR / "bgm"
-for _d in (APPROVED_DIR, RENDERED_DIR, AUDIO_DIR, SFX_DIR, BGM_DIR):
+FONTS_DIR = ASSETS_DIR / "fonts"
+for _d in (APPROVED_DIR, RENDERED_DIR, AUDIO_DIR, SFX_DIR, BGM_DIR, FONTS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 W, H, FPS = 1080, 1920, 30
@@ -59,31 +60,70 @@ MAIN_X, FOE_X = 360, 720
 LINE_W = 22
 
 FONT_CANDIDATES = [
-    "C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf",
-    "C:/Windows/Fonts/NanumGothicBold.ttf", "C:/Windows/Fonts/gulim.ttc",
-    "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
-    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    FONTS_DIR / "NanumGothic-Bold.ttf",
+    FONTS_DIR / "NanumGothic.ttf",
+    Path("C:/Windows/Fonts/malgunbd.ttf"),
+    Path("C:/Windows/Fonts/malgun.ttf"),
+    Path("C:/Windows/Fonts/NanumGothicBold.ttf"),
+    Path("C:/Windows/Fonts/NanumGothic.ttf"),
+    Path("C:/Windows/Fonts/gulim.ttc"),
+    Path("C:/Windows/Fonts/batang.ttc"),
+    Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
+    Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+    Path("/usr/share/fonts/truetype/nanum/NanumBarunGothicBold.ttf"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+    Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
 ]
+
+_RESOLVED_KOREAN_FONT: Optional[str] = None
 _FONT_CACHE: Dict[int, ImageFont.FreeTypeFont] = {}
+
+
+def resolve_korean_font_path() -> Optional[str]:
+    """한글 렌더링이 100% 보장되는 TTF/OTF 폰트 파일 경로 탐색."""
+    global _RESOLVED_KOREAN_FONT
+    if _RESOLVED_KOREAN_FONT and Path(_RESOLVED_KOREAN_FONT).exists():
+        return _RESOLVED_KOREAN_FONT
+
+    for p in FONT_CANDIDATES:
+        path_obj = Path(p)
+        if path_obj.exists() and path_obj.is_file():
+            try:
+                # 한글 글리프 렌더링 테스트
+                test_font = ImageFont.truetype(str(path_obj), 24)
+                test_img = Image.new("RGBA", (100, 40), (0, 0, 0, 0))
+                test_draw = ImageDraw.Draw(test_img)
+                test_draw.text((10, 10), "한글", font=test_font, fill=(255, 255, 255))
+                _RESOLVED_KOREAN_FONT = str(path_obj)
+                print(f"[Renderer:Font] 한글 전용 트루타입 폰트 확정 로드: {_RESOLVED_KOREAN_FONT}")
+                return _RESOLVED_KOREAN_FONT
+            except Exception as e:
+                print(f"[Renderer:Font] 폰트 로드 실패 ({path_obj}): {e}")
+                continue
+
+    return None
 
 
 def get_font(size: int):
     size = int(size)
     if size in _FONT_CACHE:
         return _FONT_CACHE[size]
+
+    font_path = resolve_korean_font_path()
     font = None
-    for path in FONT_CANDIDATES:
-        if Path(path).exists():
-            try:
-                font = ImageFont.truetype(path, size)
-                break
-            except Exception:
-                continue
+    if font_path:
+        try:
+            font = ImageFont.truetype(font_path, size)
+        except Exception as e:
+            print(f"[Renderer:Font] truetype({font_path}, {size}) 실패: {e}")
+
     if font is None:
+        print("[Renderer:Font] ⚠️ 경고: 한글 폰트를 찾을 수 없어 기본 폰트로 대체됩니다. 한글이 깨질 수 있습니다.")
         try:
             font = ImageFont.load_default(size=size)
         except TypeError:
             font = ImageFont.load_default()
+
     _FONT_CACHE[size] = font
     return font
 

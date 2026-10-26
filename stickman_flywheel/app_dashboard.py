@@ -638,14 +638,34 @@ def format_episode_label(item) -> str:
         return f"{prefix} {fname}"
     return str(item)
 
-default_idx = 0
+# 강제 선택(force_select) 또는 활성 에피소드 ID(active_episode_id) 감지 및 위젯 세션 상태 직접 동기화
 forced = st.session_state.pop("force_select", None)
+target_fname = None
+
 if forced:
     target_fname = forced[1] if isinstance(forced, (tuple, list)) else str(forced)
-    for idx, item in enumerate(episode_items):
+elif "active_episode_id" in st.session_state and st.session_state["active_episode_id"]:
+    target_fname = f"{st.session_state['active_episode_id']}.json"
+
+# target_fname이 있으면 episode_items에서 일치하는 (status, fname) 아이템을 찾아 selectbox 세션 상태 직접 갱신
+if target_fname:
+    for item in episode_items:
         if item[1] == target_fname or target_fname in item[1]:
-            default_idx = idx
+            st.session_state["active_episode_selector"] = item
             break
+
+# 혹시 파일이 pending -> approved 로 이동되었거나 초기 실행인 경우 유효성 검증
+if "active_episode_selector" in st.session_state:
+    curr_sel = st.session_state["active_episode_selector"]
+    if curr_sel not in episode_items:
+        curr_fname = curr_sel[1] if isinstance(curr_sel, (tuple, list)) else str(curr_sel)
+        matched = next((it for it in episode_items if it[1] == curr_fname), None)
+        if matched:
+            st.session_state["active_episode_selector"] = matched
+        elif episode_items:
+            st.session_state["active_episode_selector"] = episode_items[0]
+elif episode_items:
+    st.session_state["active_episode_selector"] = episode_items[0]
 
 script = None
 is_pending = True
@@ -661,7 +681,7 @@ if episode_items:
             selected_item = st.selectbox(
                 "📂 작업할 에피소드 선택 (검수 대기 & 승인 완료)",
                 options=episode_items,
-                index=default_idx,
+                key="active_episode_selector",
                 format_func=format_episode_label,
                 help="에피소드를 선택하면 하단 1➔2➔3➔4단계 탭에 즉시 동기화되어 한 화면에서 기획, 검수, 오디오, 렌더링이 이뤄집니다."
             )
@@ -703,6 +723,7 @@ if episode_items:
         try:
             script = load_script(file_path)
             key = script.episode_id
+            st.session_state["active_episode_id"] = script.episode_id
         except (ValidationError, ValueError) as e:
             st.error(f"대본 JSON 스키마 검증 실패: {e}")
             st.stop()
@@ -799,7 +820,10 @@ with tab_step1:
             cal_mgr = CalendarManager()
             rsvp_status = cal_mgr.check_rsvp_approvals()
             if rsvp_status.get("status") == "approved":
-                st.session_state["force_select"] = ("approved", f"{rsvp_status['episode_id']}.json")
+                ep_id = rsvp_status['episode_id']
+                st.session_state["active_episode_id"] = ep_id
+                st.session_state["force_select"] = ("approved", f"{ep_id}.json")
+                st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
                 st.session_state["flash"] = rsvp_status.get("message", "승인 완료!")
                 st.balloons()
                 st.rerun()
@@ -855,7 +879,10 @@ with tab_step1:
                     if btn_sim:
                         res = cal_mgr_inst.simulate_rsvp_approval(c_no)
                         if res.get("status") == "approved":
-                            st.session_state["force_select"] = ("approved", f"{c['episode_id']}.json")
+                            ep_id = c['episode_id']
+                            st.session_state["active_episode_id"] = ep_id
+                            st.session_state["force_select"] = ("approved", f"{ep_id}.json")
+                            st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
                             st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
                             st.balloons()
                             st.rerun()
@@ -941,7 +968,10 @@ with tab_step1:
         cal_mgr = CalendarManager()
         timeout_res = cal_mgr.check_and_trigger_timeout_auto_approval(force_now=True)
         if timeout_res.get("triggered"):
-            st.session_state["force_select"] = ("approved", f"{timeout_res['episode_id']}.json")
+            ep_id = timeout_res['episode_id']
+            st.session_state["active_episode_id"] = ep_id
+            st.session_state["force_select"] = ("approved", f"{ep_id}.json")
+            st.session_state["active_episode_selector"] = ("approved", f"{ep_id}.json")
             st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
             st.balloons()
             st.rerun()
@@ -977,7 +1007,10 @@ with tab_step1:
         with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중..."):
             try:
                 new_script = run_pipeline_step1()
-                st.session_state["force_select"] = ("pending", f"{new_script.episode_id}.json")
+                ep_id = new_script.episode_id
+                st.session_state["active_episode_id"] = ep_id
+                st.session_state["force_select"] = ("pending", f"{ep_id}.json")
+                st.session_state["active_episode_selector"] = ("pending", f"{ep_id}.json")
                 st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
                 st.rerun()
             except Exception as e:
@@ -1128,6 +1161,9 @@ with tab_step2:
                     with st.spinner("캘린더 등록 및 상태 갱신 중..."):
                         mgr = CalendarManager()
                         result = mgr.schedule_episode_pipeline(edited, target_date)
+                    st.session_state["active_episode_id"] = result.episode_id
+                    st.session_state["force_select"] = ("approved", f"{result.episode_id}.json")
+                    st.session_state["active_episode_selector"] = ("approved", f"{result.episode_id}.json")
                     st.session_state["flash"] = (
                         f"🎉 승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
                         f"렌더 이벤트: {result.calendar_render_event_id} / "
@@ -1250,6 +1286,21 @@ with tab_step4:
     if script is None:
         st.info("💡 렌더링할 대본이 없습니다. [Step 1: 기획 & 대본] 탭에서 신규 대본을 먼저 생성하세요.")
     else:
+        st.markdown(f"""
+            <div style="background: rgba(99, 102, 241, 0.1); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.2rem;">🎯</span>
+                    <div>
+                        <span style="font-weight: 800; font-size: 0.95rem; color: #FFFFFF;">현재 렌더링 대상 에피소드:</span>
+                        <span style="font-size: 0.95rem; color: #F59E0B; font-weight: 700; margin-left: 6px;">{'[⏳ 검수 대기]' if is_pending else '[✅ 승인 완료]'} {script.episode_title}</span>
+                    </div>
+                </div>
+                <div style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: #94A3B8; background: #0F172A; padding: 4px 10px; border-radius: 6px;">
+                    ID: {script.episode_id}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
         st.markdown("""
             <div class="stitch-card">
                 <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
