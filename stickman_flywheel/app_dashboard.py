@@ -379,21 +379,35 @@ div[data-testid="stVideo"]::after {
     margin-top: 4px;
 }
 
-/* 1. 셀렉트박스 메인 인풋 박스 배경 및 테두리 */
-div[data-baseweb="select"] {
+/* 1. disabled(읽기 전용) 입력창 투명도 제거 및 글씨 쨍하게 복구 */
+input:disabled,
+textarea:disabled,
+[data-baseweb="input"] input:disabled,
+[data-baseweb="textarea"] textarea:disabled,
+div[data-baseweb="input"] input:disabled,
+div[data-baseweb="textarea"] textarea:disabled {
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+    opacity: 1 !important;
+    background-color: #1E293B !important;
+    border-color: #475569 !important;
+    cursor: default !important;
+}
+
+/* 2. 최상단 에피소드 선택기 및 모든 selectbox 내부 텍스트 쨍하게 */
+.stSelectbox div[data-baseweb="select"] {
     background-color: #1E293B !important;
     border-radius: 8px !important;
 }
-div[data-baseweb="select"] > div {
+.stSelectbox div[data-baseweb="select"] > div {
     background-color: #1E293B !important;
     border: 1px solid #38BDF8 !important;
     border-radius: 8px !important;
 }
-
-/* 2. 선택되어 표시되는 내부 텍스트 (모든 하위 태그 강제 백색 처리) */
-div[data-baseweb="select"] * {
-    color: #FFFFFF !important;
-    -webkit-text-fill-color: #FFFFFF !important;
+.stSelectbox div[data-baseweb="select"] * {
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+    opacity: 1 !important;
 }
 
 /* 3. 플레이스홀더 및 단일 밸류 텍스트 직접 타깃팅 */
