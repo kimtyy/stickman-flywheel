@@ -379,30 +379,44 @@ div[data-testid="stVideo"]::after {
     margin-top: 4px;
 }
 
-/* 셀렉트박스 선택된 값 및 텍스트 쨍한 순백색 강제 지정 */
-div[data-baseweb="select"] span,
-div[data-baseweb="select"] div,
-.stSelectbox [data-baseweb="select"] * {
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
-    -webkit-text-fill-color: #FFFFFF !important;
+/* 1. 셀렉트박스 메인 인풋 박스 배경 및 테두리 */
+div[data-baseweb="select"] {
+    background-color: #1E293B !important;
+    border-radius: 8px !important;
 }
-
-/* 셀렉트박스 컨테이너 배경 및 테두리 시인성 보강 */
 div[data-baseweb="select"] > div {
     background-color: #1E293B !important;
     border: 1px solid #38BDF8 !important;
+    border-radius: 8px !important;
 }
 
-/* 드롭다운 옵션 팝업 메뉴 시인성 보강 */
-div[data-baseweb="popover"] li,
-div[data-baseweb="menu"] li,
-div[data-baseweb="popover"] * {
+/* 2. 선택되어 표시되는 내부 텍스트 (모든 하위 태그 강제 백색 처리) */
+div[data-baseweb="select"] * {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
 }
+
+/* 3. 플레이스홀더 및 단일 밸류 텍스트 직접 타깃팅 */
+div[data-baseweb="select"] [class*="ValueContainer"] div,
+div[data-baseweb="select"] [class*="singleValue"],
+div[data-baseweb="select"] span {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* 4. 펼쳐졌을 때의 팝오버 메뉴 텍스트 및 배경 */
+ul[data-baseweb="menu"],
 div[data-baseweb="popover"] {
-    background-color: #0F172A !important;
+    background-color: #1E293B !important;
+    border: 1px solid #38BDF8 !important;
+}
+ul[data-baseweb="menu"] li,
+ul[data-baseweb="menu"] li * {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
 }
 
 /* Expander 다크 글래스 */
