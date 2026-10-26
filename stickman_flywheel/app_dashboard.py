@@ -524,25 +524,23 @@ if "flash_err" in st.session_state:
 pending_list = list_files(PENDING_DIR)
 approved_list = list_files(APPROVED_DIR)
 
-episode_options = []
-episode_map = {}
+# (상태, 순수 파일명) 튜플 리스트로 옵션 구성
+episode_items = [("pending", fname) for fname in pending_list] + [("approved", fname) for fname in approved_list]
 
-for fname in pending_list:
-    label = f"⏳ [검수 대기] {fname}"
-    episode_options.append(label)
-    episode_map[label] = ("pending", fname)
-
-for fname in approved_list:
-    label = f"✅ [승인 완료] {fname}"
-    episode_options.append(label)
-    episode_map[label] = ("approved", fname)
+def format_episode_label(item) -> str:
+    """st.selectbox 표시용 라벨 포맷터: 순수 파일명 앞에 상태 뱃지 부착"""
+    if isinstance(item, tuple) and len(item) == 2:
+        status, fname = item
+        prefix = "⏳ [검수 대기]" if status == "pending" else "✅ [승인 완료]"
+        return f"{prefix} {fname}"
+    return str(item)
 
 default_idx = 0
 forced = st.session_state.pop("force_select", None)
 if forced:
     target_fname = forced[1] if isinstance(forced, (tuple, list)) else str(forced)
-    for idx, opt in enumerate(episode_options):
-        if target_fname in opt:
+    for idx, item in enumerate(episode_items):
+        if item[1] == target_fname or target_fname in item[1]:
             default_idx = idx
             break
 
@@ -553,16 +551,17 @@ video_file = None
 key = "empty"
 
 # 본문 상단 통합 에피소드 선택기 카드
-if episode_options:
+if episode_items:
     st.markdown("""
         <div class="stitch-card" style="padding: 16px 20px; margin-bottom: 20px;">
     """, unsafe_allow_html=True)
     col_ep_sel, col_ep_badge = st.columns([2.6, 1.0], gap="medium")
     with col_ep_sel:
-        selected_label = st.selectbox(
+        selected_item = st.selectbox(
             "📂 작업할 에피소드 선택 (검수 대기 & 승인 완료)",
-            options=episode_options,
+            options=episode_items,
             index=default_idx,
+            format_func=format_episode_label,
             help="에피소드를 선택하면 하단 1➔2➔3➔4단계 탭에 즉시 동기화되어 한 화면에서 기획, 검수, 오디오, 렌더링이 이뤄집니다."
         )
     with col_ep_badge:
@@ -578,21 +577,41 @@ if episode_options:
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    is_pending, selected_fname = episode_map[selected_label]
+    # 선택된 아이템에서 상태 및 순수 파일명 안전 추출
+    if isinstance(selected_item, tuple) and len(selected_item) == 2:
+        is_pending = (selected_item[0] == "pending")
+        selected_fname = selected_item[1]
+    else:
+        # 혹시 기존 캐시 등으로 문자열이 넘어온 경우 라벨 프리픽스 안전 정제
+        raw = str(selected_item)
+        for prefix in ["⏳ [검수 대기]", "✅ [승인 완료]", "[검수 대기]", "[승인 완료]"]:
+            raw = raw.replace(prefix, "")
+        selected_fname = raw.strip()
+        is_pending = (PENDING_DIR / selected_fname).exists() or not (APPROVED_DIR / selected_fname).exists()
+
     folder = PENDING_DIR if is_pending else APPROVED_DIR
     file_path = folder / selected_fname
-    try:
-        script = load_script(file_path)
-        key = script.episode_id
-    except (ValidationError, ValueError) as e:
-        st.error(f"대본 JSON 스키마 검증 실패: {e}")
-        st.stop()
 
-    if script.rendered_video_path:
-        cand = Path(script.rendered_video_path)
-        video_file = cand if cand.exists() else None
-    if video_file is None and (RENDERED_DIR / f"{script.episode_id}.mp4").exists():
-        video_file = RENDERED_DIR / f"{script.episode_id}.mp4"
+    # 파일이 승인 등으로 이동되어 현재 폴더에 없으면 반대쪽 폴더 자동 탐색
+    if not file_path.exists():
+        alt_folder = APPROVED_DIR if is_pending else PENDING_DIR
+        if (alt_folder / selected_fname).exists():
+            file_path = alt_folder / selected_fname
+            is_pending = not is_pending
+
+    if file_path.exists():
+        try:
+            script = load_script(file_path)
+            key = script.episode_id
+        except (ValidationError, ValueError) as e:
+            st.error(f"대본 JSON 스키마 검증 실패: {e}")
+            st.stop()
+
+        if script.rendered_video_path:
+            cand = Path(script.rendered_video_path)
+            video_file = cand if cand.exists() else None
+        if video_file is None and (RENDERED_DIR / f"{script.episode_id}.mp4").exists():
+            video_file = RENDERED_DIR / f"{script.episode_id}.mp4"
 
 video_specs = get_video_specs(video_file)
 
