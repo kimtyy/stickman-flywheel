@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "timeout_time": "16:00",
+  "golden_time_publish": "17:30",
+  "remind_time": "15:00",
+  "morning_alert_time": "09:00",
+  "last_checked": "2026-10-27T01:31:32.600703",
+  "last_auto_approved_episode": null
+}

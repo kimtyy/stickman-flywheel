@@ -17,11 +17,56 @@ BASE_DIR = Path(__file__).resolve().parent
 PENDING_DIR = BASE_DIR / "pipeline_outputs" / "pending"
 APPROVED_DIR = BASE_DIR / "pipeline_outputs" / "approved"
 CANDIDATE_SERVING_FILE = BASE_DIR / "pipeline_outputs" / "candidate_serving.json"
+AUTOPILOT_CONFIG_FILE = BASE_DIR / "pipeline_outputs" / "autopilot_config.json"
+GOLDEN_TIME_QUEUE_FILE = BASE_DIR / "pipeline_outputs" / "golden_time_queue.json"
 PENDING_DIR.mkdir(parents=True, exist_ok=True)
 APPROVED_DIR.mkdir(parents=True, exist_ok=True)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Seoul"
+
+
+def get_autopilot_config() -> Dict[str, Any]:
+    """무인 자율 주행 모드(Autopilot) 설정 로드."""
+    if not AUTOPILOT_CONFIG_FILE.exists():
+        default_cfg = {
+            "enabled": True,
+            "timeout_time": "16:00",
+            "golden_time_publish": "17:30",
+            "remind_time": "15:00",
+            "morning_alert_time": "09:00",
+            "last_checked": datetime.now().isoformat(),
+            "last_auto_approved_episode": None,
+        }
+        AUTOPILOT_CONFIG_FILE.write_text(json.dumps(default_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        return default_cfg
+    try:
+        return json.loads(AUTOPILOT_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"enabled": True, "timeout_time": "16:00", "golden_time_publish": "17:30"}
+
+
+def set_autopilot_enabled(enabled: bool) -> None:
+    """무인 자율 주행 모드 On/Off 토글 저장."""
+    cfg = get_autopilot_config()
+    cfg["enabled"] = enabled
+    cfg["last_updated"] = datetime.now().isoformat()
+    AUTOPILOT_CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def is_autopilot_enabled() -> bool:
+    """무인 자율 주행 모드 활성화 여부 확인."""
+    return get_autopilot_config().get("enabled", True)
+
+
+def get_golden_time_queue() -> List[Dict[str, Any]]:
+    """퇴근길 골든 타임(17:30~18:00) 예약 배포 대기열 로드."""
+    if not GOLDEN_TIME_QUEUE_FILE.exists():
+        return []
+    try:
+        return json.loads(GOLDEN_TIME_QUEUE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
 
 
 class CalendarManager:
@@ -81,7 +126,8 @@ class CalendarManager:
 
     def _create_event(self, summary: str, description: str, start: datetime,
                       end: datetime, color_id: str,
-                      attendees: Optional[List[Dict[str, Any]]] = None) -> str:
+                      attendees: Optional[List[Dict[str, Any]]] = None,
+                      reminders: Optional[Dict[str, Any]] = None) -> str:
         body: Dict[str, Any] = {
             "summary": summary,
             "description": description,
@@ -91,6 +137,8 @@ class CalendarManager:
         }
         if attendees:
             body["attendees"] = attendees
+        if reminders:
+            body["reminders"] = reminders
         if self.dry_run or self.service is None:
             return f"dryrun-{uuid.uuid4().hex[:12]}"
         try:
@@ -105,7 +153,7 @@ class CalendarManager:
     def serve_candidate_buffet(self, candidates: List[Dict[str, Any]],
                                target_date: date,
                                attendee_email: Optional[str] = None) -> Dict[str, Any]:
-        """오늘자 3대 킬러 후보 대본을 구글 캘린더에 RSVP 초대로 서빙 등록."""
+        """오늘자 3대 킬러 후보 대본을 구글 캘린더에 RSVP 초대로 서빙 등록 (오전 09:00 알림 및 15:00 리마인더 연동)."""
         email_to_invite = (
             attendee_email
             or os.getenv("CALENDAR_USER_EMAIL")
@@ -122,6 +170,12 @@ class CalendarManager:
 
         color_palette = ["9", "5", "11"]  # Blueberry, Banana, Flamingo
         served_candidates = []
+
+        # 09:00 팝업 알림 설정 (후보 서빙 시 스마트폰 팝업 즉시 푸시)
+        morning_popup_reminders = {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": 10}]
+        }
 
         for idx, cand in enumerate(candidates):
             c_no = cand.get("candidate_no", idx + 1)
@@ -149,13 +203,14 @@ class CalendarManager:
                 f"📱 [모바일 원클릭 승인 안내]\n"
                 f"스마트폰 캘린더 상단의 '[예(Yes)]'를 터치하시면,\n"
                 f"이 대본이 [승인 완료]되어 스틱맨 렌더링 파이프라인으로 즉시 자동 연결됩니다!\n"
+                f"⚠️ [부재중 무인 자율주행]: 오후 16:00까지 미응답 시 1위 대본이 자동 승인되어 17:30 골든타임에 자동 배포됩니다.\n"
                 f"--------------------------------------------------\n"
                 f"<!-- EPISODE_ID: {script.episode_id} -->\n"
                 f"<!-- CANDIDATE_NO: {c_no} -->\n"
             )
 
-            # 오전 10시부터 1시간 간격으로 서빙
-            start_dt = datetime.combine(target_date, time(10 + idx, 0))
+            # 오전 09:00부터 30분 간격으로 서빙
+            start_dt = datetime.combine(target_date, time(9 + (idx * 1), 0))
             end_dt = start_dt + timedelta(minutes=45)
             cid = color_palette[idx % len(color_palette)]
 
@@ -165,7 +220,8 @@ class CalendarManager:
                 start=start_dt,
                 end=end_dt,
                 color_id=cid,
-                attendees=attendees_list if attendees_list else None
+                attendees=attendees_list if attendees_list else None,
+                reminders=morning_popup_reminders
             )
 
             served_candidates.append({
@@ -179,6 +235,25 @@ class CalendarManager:
                 "start_time": start_dt.strftime("%H:%M"),
             })
 
+        # 오후 15:00 미승인 시 "16시에 1위 후보로 자동 승인됩니다" 리마인드 팝업 알림 일정 등록
+        remind_dt = datetime.combine(target_date, time(15, 0))
+        remind_end = remind_dt + timedelta(minutes=20)
+        reminder_event_id = self._create_event(
+            summary="🔔 [리마인드] 16:00 적중률 1위 대본 자동 승인 예고 (골든타임 17:30 배포)",
+            description=(
+                "⚡ [부재중 무인 자율 주행 모드 가동 중]\n\n"
+                "오늘 16:00까지 캘린더 RSVP([예]) 응답이 없을 경우,\n"
+                "후보 중 '예상 적중률 1위' 대본이 자동으로 [승인 완료] 처리되며,\n"
+                "백그라운드 렌더링 착수 후 퇴근길 골든 타임(17:30~18:00) 유튜브 예약 배포 대기열에 등록됩니다.\n\n"
+                "원하시는 특정 대본이 있다면 16:00 전에 [예]를 눌러주세요!"
+            ),
+            start=remind_dt,
+            end=remind_end,
+            color_id="11",  # Flamingo
+            attendees=attendees_list if attendees_list else None,
+            reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 0}]}
+        )
+
         serving_data = {
             "serving_date": str(target_date),
             "served_at": datetime.now().isoformat(),
@@ -186,12 +261,15 @@ class CalendarManager:
             "attendee_email": email_to_invite,
             "approved_episode_id": None,
             "approved_candidate_no": None,
+            "approved_by": None,
+            "golden_time_scheduled": None,
+            "reminder_event_id": reminder_event_id,
             "candidates": served_candidates,
         }
 
         CANDIDATE_SERVING_FILE.write_text(json.dumps(serving_data, indent=2, ensure_ascii=False), encoding="utf-8")
         mode = "Live" if (not self.dry_run and self.service) else "Dry-Run"
-        print(f"[CalendarBuffet:{mode}] 3대 후보 대본 구글 캘린더 서빙 등록 완료")
+        print(f"[CalendarBuffet:{mode}] 3대 후보 대본(09:00 알림) 및 15:00 자동승인 예고 리마인더 구글 캘린더 등록 완료")
         return serving_data
 
     def check_rsvp_approvals(self) -> Dict[str, Any]:
@@ -321,6 +399,156 @@ class CalendarManager:
                 cand["rsvp_status"] = "accepted"
         CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         return self.check_rsvp_approvals()
+
+    def check_and_trigger_timeout_auto_approval(self, force_now: bool = False) -> Dict[str, Any]:
+        """오후 16:00 타임아웃 자동 승인 & 퇴근길 골든 타임(17:30~18:00) 자동 배포 대기열 안전장치."""
+        if not is_autopilot_enabled() and not force_now:
+            return {"triggered": False, "reason": "무인 자율 주행 모드(Autopilot)가 비활성화되어 있습니다."}
+
+        if not CANDIDATE_SERVING_FILE.exists():
+            return {"triggered": False, "reason": "서빙된 밥상 후보 내역이 없습니다."}
+
+        try:
+            data = json.loads(CANDIDATE_SERVING_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            return {"triggered": False, "reason": f"서빙 데이터 파싱 오류: {e}"}
+
+        if data.get("status") == "approved":
+            return {
+                "triggered": False,
+                "already_approved": True,
+                "episode_id": data.get("approved_episode_id"),
+                "reason": "이미 승인 완료된 에피소드가 존재합니다."
+            }
+
+        now = datetime.now()
+        # 16:00 타임아웃 도달 검사 (force_now=True 시 즉시 강제 테스트 가능)
+        if not force_now and now.time() < time(16, 0):
+            return {
+                "triggered": False,
+                "reason": f"아직 자동 승인 타임아웃(16:00) 전입니다. (현재 시각: {now.strftime('%H:%M')})"
+            }
+
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return {"triggered": False, "reason": "후보 대본 목록이 비어있습니다."}
+
+        # 예상 적중률 1위 후보 자동 선정 (predicted_hit_rate 기준 내림차순)
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda c: c.get("predicted_hit_rate", 0),
+            reverse=True
+        )
+        winner = sorted_candidates[0]
+        c_no = winner["candidate_no"]
+        ep_id = winner["episode_id"]
+
+        pending_path = PENDING_DIR / f"{ep_id}.json"
+        approved_path = APPROVED_DIR / f"{ep_id}.json"
+        script = None
+
+        if pending_path.exists():
+            script = load_script(pending_path)
+            approved_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+            pending_path.unlink(missing_ok=True)
+        elif approved_path.exists():
+            script = load_script(approved_path)
+
+        # 캘린더 이벤트 업데이트 (구글 캘린더 상에 자동 승인 표시)
+        if not self.dry_run and self.service is not None:
+            for cand in candidates:
+                ev_id = cand.get("calendar_event_id")
+                if not ev_id or ev_id.startswith("dryrun-"):
+                    continue
+                try:
+                    if cand["candidate_no"] == c_no:
+                        self.service.events().patch(
+                            calendarId=self.calendar_id,
+                            eventId=ev_id,
+                            body={
+                                "summary": f"[🤖 16:00 자율승인] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
+                                "colorId": "10"  # Green
+                            }
+                        ).execute()
+                    else:
+                        self.service.events().patch(
+                            calendarId=self.calendar_id,
+                            eventId=ev_id,
+                            body={
+                                "summary": f"[타임아웃 미채택] {cand['episode_title']}",
+                                "colorId": "8"  # Graphite
+                            }
+                        ).execute()
+                except Exception as e:
+                    print(f"[Calendar] 타임아웃 이벤트 패치 실패: {e}")
+
+        # 퇴근길 골든 타임(17:30 ~ 18:00) 예약 배포 캘린더 등록
+        serving_date_str = data.get("serving_date", str(date.today()))
+        try:
+            target_date_obj = datetime.strptime(serving_date_str, "%Y-%m-%d").date()
+        except Exception:
+            target_date_obj = date.today()
+
+        golden_start = datetime.combine(target_date_obj, time(17, 30))
+        golden_end = datetime.combine(target_date_obj, time(18, 0))
+
+        golden_event_id = self._create_event(
+            summary=f"🌇 [골든타임 예약발행] {winner['episode_title']}",
+            description=(
+                f"🚀 [트래픽 피크 타임 무인 자율 발행 대기열]\n\n"
+                f"- 에피소드: {winner['episode_title']} (ID: {ep_id})\n"
+                f"- 예상 적중률: {winner.get('predicted_hit_rate', 95)}% (1위 자동승인)\n"
+                f"- 배포 예정 시간: {golden_start.strftime('%H:%M')} ~ {golden_end.strftime('%H:%M')}\n"
+                f"- 상태: 렌더링 후 유튜브 예약 업로드 대기열 등록 완료"
+            ),
+            start=golden_start,
+            end=golden_end,
+            color_id="9",  # Blueberry
+            reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 10}]}
+        )
+
+        # 서빙 파일 상태 갱신
+        data["status"] = "approved"
+        data["approved_episode_id"] = ep_id
+        data["approved_candidate_no"] = c_no
+        data["approved_by"] = "autopilot_timeout_1600"
+        data["golden_time_scheduled"] = "17:30"
+        data["golden_event_id"] = golden_event_id
+        data["auto_approved_at"] = datetime.now().isoformat()
+        CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # 퇴근길 골든타임 큐에 등록
+        queue = get_golden_time_queue()
+        queue_item = {
+            "episode_id": ep_id,
+            "episode_title": winner["episode_title"],
+            "candidate_no": c_no,
+            "predicted_hit_rate": winner.get("predicted_hit_rate", 95),
+            "approved_at": datetime.now().isoformat(),
+            "approved_by": "autopilot_timeout_1600",
+            "scheduled_publish_time": f"{target_date_obj}T17:30:00+09:00",
+            "status": "ready_for_golden_time_upload",
+            "traffic_target": "퇴근길 쇼츠 트래픽 피크 (17:30 ~ 18:00)"
+        }
+        # 중복 방지
+        queue = [q for q in queue if q.get("episode_id") != ep_id]
+        queue.append(queue_item)
+        GOLDEN_TIME_QUEUE_FILE.write_text(json.dumps(queue, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # 오토파일럿 설정에 기록
+        cfg = get_autopilot_config()
+        cfg["last_checked"] = datetime.now().isoformat()
+        cfg["last_auto_approved_episode"] = ep_id
+        AUTOPILOT_CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        return {
+            "triggered": True,
+            "winner_candidate_no": c_no,
+            "episode_id": ep_id,
+            "script": script,
+            "golden_time": "17:30 ~ 18:00",
+            "message": f"🤖 [16:00 타임아웃 무인 자율 승인 발동] 예상 적중률 1위(후보 {c_no}, {winner.get('predicted_hit_rate')}%) '{winner['episode_title']}' 승인 완료 → 17:30 골든타임 발행 대기열 등록!"
+        }
 
     def get_current_serving_status(self) -> Optional[Dict[str, Any]]:
         """현재 서빙 중인 3대 후보 대본 정보 반환."""

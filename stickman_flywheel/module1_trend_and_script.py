@@ -199,6 +199,16 @@ class EmotionalReverseScriptGenerator:
                     parts.append(f"   - 베스트댓글: {c.strip()[:300]}")
         elif not custom_topic:
             parts.append("(수집된 영상 없음 — 트렌드 키워드에서 대중 감정을 추론하라)")
+
+        # Closed-Loop AI 자율 피드백 룰 주입
+        try:
+            from module5_analytics_feedback import get_active_feedback_prompt
+            feedback_rules = get_active_feedback_prompt()
+            if feedback_rules:
+                parts.append(feedback_rules)
+        except Exception:
+            pass
+
         parts.append("\n위 데이터에서 열광 포인트만 역공학해 오리지널 스틱맨 숏폼 대본을 생성하라.")
         return "\n".join(parts)
 
