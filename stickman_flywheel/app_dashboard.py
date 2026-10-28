@@ -1262,10 +1262,12 @@ elif active_nav == "✍️ Step 2: 대본 검수":
                 with col_sc1:
                     action = st.text_area("스틱맨 액션 / 연출 (stickman_action)", sc.stickman_action, key=f"{key}_a{n}", disabled=disabled, height=65)
                     subtitle = st.text_input("자막 텍스트 (subtitle_text)", sc.subtitle_text, key=f"{key}_s{n}", disabled=disabled)
+                    cur_props = ", ".join(getattr(sc, "visual_props", []) or [])
+                    vprops = st.text_input("상황 오브젝트 (visual_props, 쉼표 구분)", cur_props, key=f"{key}_vp{n}", disabled=disabled, placeholder="예: luxury_car_double_parked, tight_blocking_car")
                 with col_sc2:
                     narration = st.text_area("TTS 성우 대사 (tts_narration)", sc.tts_narration, key=f"{key}_n{n}", disabled=disabled, height=65)
                     sfx = st.text_input("효과음 큐 (sfx_cue)", sc.sfx_cue, key=f"{key}_f{n}", disabled=disabled)
-                scene_inputs.append((n, action, narration, subtitle, sfx))
+                scene_inputs.append((n, action, narration, subtitle, sfx, vprops))
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1273,13 +1275,15 @@ elif active_nav == "✍️ Step 2: 대본 검수":
             data = script.model_dump()
             data["episode_title"] = title
             data["analysis"]["twist_point"] = twist
-            for n, action, narration, subtitle, sfx in scene_inputs:
+            for n, action, narration, subtitle, sfx, vprops in scene_inputs:
                 scene = data["scenes"][n - 1]
                 scene["stickman_action"] = action
                 scene["tts_narration"] = narration
                 scene["subtitle_text"] = subtitle
                 scene["sfx_cue"] = sfx
+                scene["visual_props"] = [p.strip() for p in vprops.split(",") if p.strip()]
             return StickmanScriptOutput.model_validate(data)
+
 
         # 승인 및 캘린더 등록 액션 바
         if is_pending:

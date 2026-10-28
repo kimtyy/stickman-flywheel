@@ -1,0 +1,113 @@
+{
+  "episode_id": "20261028_050155",
+  "episode_title": "두 칸 주차 외제차 문틈 0cm 밀착 봉쇄 후 견인 엔딩 참교육",
+  "target_emotion": "분노 유발 무개념 주차 빌런에 대한 숨 막히는 밀착 봉쇄와 시원한 강제 견인 카타르시스",
+  "analysis": {
+    "discarded_surface_topic": "고가 수입차 자랑, 아파트 주차장 민원 다툼, 보험사 과실 비율 분쟁",
+    "extracted_core_desire": "비싼 차 긁힐까 봐 공공 주차선을 두 칸 독점하는 특권의식 빌런을 문틈 0cm 밀착과 견인 크레인으로 한 치의 틈도 없이 물리적으로 완벽히 응징하는 통쾌함",
+    "transplanted_setting": "지하 2층 주차장 B2 구역 노란색 주차선 앞",
+    "twist_point": "운전석 문틈을 0cm로 완벽 밀착 봉쇄해 진입을 차단한 뒤, 구청 단속반 견인차가 출동해 외제차 앞바퀴를 공중으로 들어 올리며 끌고 가는 사이다 엔딩"
+  },
+  "total_duration_sec": 30,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration_sec": 4,
+      "stickman_action": "빌런 B가 두 칸을 삐딱하게 물고 선 외제차 옆에서 거만하게 턱을 치켜들고, 주인공 A는 어처구니없다는 듯 두 칸 주차선을 가리키며 뒷목을 잡는다.",
+      "camera_work": "Fast Zoom-in to luxury car",
+      "sfx_cue": "0.5s dramatic_thud, 2.0s car_horn",
+      "tts_narration": "해설: 지하 주차장에 나타난 역대급 두 칸 주차 외제차 빌런! B: 이봐, 내 비싼 차 긁힐까 봐 일부러 두 칸 댔는데, 불만 있어?",
+      "subtitle_text": "비싼 차 긁힐까 봐 두 칸 댔다?",
+      "visual_props": [
+        "luxury_car_double_parked"
+      ]
+    },
+    {
+      "scene_number": 2,
+      "duration_sec": 4,
+      "stickman_action": "주인공 A가 삿대질하며 분통을 터뜨리고, 빌런 B는 주머니에 손을 꽂은 채 키득거리며 발끝을 톡톡 찬다.",
+      "camera_work": "Screen Shake on argument",
+      "sfx_cue": "0.8s angry_grunt, 2.5s sarcastic_laugh",
+      "tts_narration": "해설: 상식 밖의 뻔뻔함에 분노가 턱 끝까지 차오르는데! A: 아니, 주차선 두 칸을 물고 대면 다른 차는 어디다 대라고요? B: 꼬우면 너도 비싼 차 사든가, 긁히면 전재산 날아간다?",
+      "subtitle_text": "꼬우면 너도 비싼 차 사든가?",
+      "visual_props": [
+        "luxury_car_double_parked"
+      ]
+    },
+    {
+      "scene_number": 3,
+      "duration_sec": 4,
+      "stickman_action": "빌런 B가 손을 휘저으며 무시하고 차 문을 닫으려 하자, 주인공 A의 눈빛이 살벌하게 번뜩인다.",
+      "camera_work": "Dutch Angle with Red Focus Lines",
+      "sfx_cue": "0.5s car_lock_beep, 2.0s dark_ambience",
+      "tts_narration": "해설: 사과는커녕 적반하장 고소 협박까지 시전하는 빌런! B: 나 바쁘니까 말 걸지 마. 차에 손대기만 해봐, 바로 고소할 테니까.",
+      "subtitle_text": "차 손대기만 해봐, 바로 고소야!",
+      "visual_props": [
+        "luxury_car_double_parked"
+      ]
+    },
+    {
+      "scene_number": 4,
+      "duration_sec": 4,
+      "stickman_action": "주인공 A가 차를 몰아 빌런 차 운전석 바로 옆으로 0cm 밀착 진입하고, 빌런 B의 눈이 튀어나올 듯 경악한다.",
+      "camera_work": "Whip Pan to tire contact",
+      "sfx_cue": "0.5s tire_screech, 2.0s metallic_clang",
+      "tts_narration": "해설: 이에 맞선 주인공의 살 떨리는 참교육 밀착 주차 시전! A: 비싼 차 그렇게 아끼시면, 문도 열지 마세요. B: 어어, 야, 지금 차를 어디다 붙이는 거야?",
+      "subtitle_text": "비싼 차 아끼시면 문도 열지 마세요",
+      "visual_props": [
+        "tight_blocking_car",
+        "door_jammed"
+      ]
+    },
+    {
+      "scene_number": 5,
+      "duration_sec": 4,
+      "stickman_action": "빌런 B가 문틈에 손가락을 쑤셔 넣으려다 실패하고 펄쩍 뛰며 절규하고, 주인공 A는 팔짱을 끼고 비웃는다.",
+      "camera_work": "Extreme Close-up on 0cm gap",
+      "sfx_cue": "0.8s door_jam_thud, 2.2s comic_panic",
+      "tts_narration": "해설: 운전석 문틈 간격 정확히 0cm로 완전 봉쇄 완료! A: 문틈 간격 제로입니다, 어디 조심히 타보시죠? B: 으악, 야! 문틈 0cm 밀착 봉쇄라니! 당장 차 안 빼?",
+      "subtitle_text": "문틈 0cm 밀착 봉쇄 완료!",
+      "visual_props": [
+        "tight_blocking_car",
+        "door_jammed"
+      ]
+    },
+    {
+      "scene_number": 6,
+      "duration_sec": 5,
+      "stickman_action": "견인차 크레인의 쇠사슬이 덜컹거리며 빌런 외제차의 앞바퀴를 공중으로 띄우자, 빌런 B가 머리를 쥐어뜯으며 주저앉는다.",
+      "camera_work": "Crane Up tracking lifted car",
+      "sfx_cue": "0.5s tow_winch_motor, 2.2s metallic_chain, 3.8s horn_blast",
+      "tts_narration": "해설: 엎친 데 덮친 격, 구청 견인 크레인까지 도착하는데! A: 두 칸 주차 통행 방해로 즉시 강제 견인 들어갑니다. B: 어어? 저거 내 차 앞바퀴를 왜 들어 올리는데?!",
+      "subtitle_text": "불법주차 강제 차량 견인 집행!",
+      "visual_props": [
+        "tow_truck_lifting"
+      ]
+    },
+    {
+      "scene_number": 7,
+      "duration_sec": 5,
+      "stickman_action": "끌려가는 외제차 뒤를 쫓아가다 타이어에 깔려 바닥에 납작 찌부러지는 빌런 B의 슬랩스틱 최후, 주인공 A는 손을 흔들며 배웅한다.",
+      "camera_work": "Fast Zoom-out with Screen Shake on crush",
+      "sfx_cue": "0.5s comic_squash, 2.0s car_drive_away, 3.5s triumph_jingle",
+      "tts_narration": "해설: 공중으로 번쩍 들려 끌려가는 빌런 차량! B: 으아악! 내 차! 사람 살려! 차 견인 안돼에엑! A: 두 칸 주차의 최후는 시원한 참교육 견인입니다.",
+      "subtitle_text": "두 칸 주차 빌런의 최후: 참교육 견인",
+      "visual_props": [
+        "tow_truck_lifting"
+      ]
+    }
+  ],
+  "hashtags": [
+    "#두칸주차",
+    "#주차빌런",
+    "#밀착주차",
+    "#참교육",
+    "#외제차",
+    "#사이다",
+    "#스틱맨",
+    "#쇼츠"
+  ],
+  "calendar_render_event_id": null,
+  "calendar_upload_event_id": null,
+  "rendered_video_path": "C:\\Users\\user\\스틱맨 숏폼 자율 플라이휠 시스템\\stickman_flywheel\\pipeline_outputs\\rendered\\20261028_050155.mp4"
+}

@@ -1071,14 +1071,19 @@ def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str
         d.text((rx + 24, ant_top - 20), "⚡", font=get_font(28), fill=(255, 225, 0), anchor="mm")
 
     # 4. 맞춤형 참교육 소품 (황금 VIP 카드, 10T 강철 당근, 20KG 바벨, 100T 참교육 철퇴/무게추)
-    is_climax_crush = (pose_b in ("crushed", "fall", "hit") or any(k in text for k in [
-        "짓눌", "깔려", "납작", "개구리", "살려", "사람 살려", "으아악", "200kg", "100kg", "참교육"
-    ]))
+    # 실제 빌런 B가 깔려 쓰러지는 포즈일 때만 압사 소품이 등장하도록 엄격히 제한
+    is_climax_crush = (pose_b in ("crushed", "fall") or (pose_b == "hit" and any(k in text for k in [
+        "짓눌", "깔려", "납작", "개구리", "살려", "사람 살려", "으아악"
+    ])))
+
     has_convenience_theme = (setting_type == "convenience_store") or any(k in text for k in ["편의점", "카드", "적립", "포스기", "알바", "골드"])
     has_barbell_theme = any(k in text for k in [
         "바벨", "원판", "스쿼트", "랙", "덤벨", "벤치", "쇠질", "무반동", "세트", "중량"
     ])
     has_carrot_theme = any(k in text for k in ["당근", "중고", "네고", "매너온도"])
+    has_parking_theme = (setting_type == "parking_road") or any(k in text for k in [
+        "주차", "견인", "렉카", "차량", "밀착", "두 칸", "외제차", "문틈", "0cm"
+    ])
 
     if is_climax_crush:
         bx = fig_b["hip"][0] + 15
@@ -1130,6 +1135,21 @@ def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str
                     px = base_x + side * (stack * 24)
                     d.rounded_rectangle((px - 12, by - 95, px + 12, by + 95), radius=8, fill=(30, 30, 40), outline=(10, 10, 20), width=3)
                     d.text((px, by), "20KG", font=font_plate, fill=(255, 220, 0), anchor="mm")
+            fx_dust(d, bx, FLOOR_Y, t)
+        elif has_parking_theme:
+            # [100TON 강제 견인 특수 휠클램프 & 초대형 렉카 타이어 참교육]
+            # 초대형 트럭 타이어
+            d.ellipse((bx - 160, FLOOR_Y - 320, bx + 160, FLOOR_Y - 20), fill=(20, 22, 28), outline=(10, 12, 15), width=8)
+            d.ellipse((bx - 110, FLOOR_Y - 270, bx + 110, FLOOR_Y - 70), fill=(65, 72, 85), outline=(220, 225, 235), width=6)
+            # 옐로우 강철 휠클램프 바디 (바퀴 잠금 장치)
+            clamp_poly = [
+                (bx - 180, FLOOR_Y - 200), (bx + 180, FLOOR_Y - 200),
+                (bx + 140, FLOOR_Y - 130), (bx - 140, FLOOR_Y - 130)
+            ]
+            d.polygon(clamp_poly, fill=(245, 180, 25), outline=(15, 18, 22), width=4)
+            d.rounded_rectangle((bx - 150, FLOOR_Y - 240, bx + 150, FLOOR_Y - 170), radius=12, fill=(25, 28, 35), outline=(245, 200, 30), width=4)
+            d.text((bx, FLOOR_Y - 205), "100 TON 견인", font=get_font(42), fill=(255, 220, 0), anchor="mm")
+            d.text((bx, FLOOR_Y - 95), "강제 견인 완료", font=get_font(28), fill=(255, 255, 255), anchor="mm")
             fx_dust(d, bx, FLOOR_Y, t)
         else:
             # [100T 참교육 거대 강철 무게추]
@@ -1224,7 +1244,9 @@ def detect_setting(setting_text: str = "", title: str = "", scene_texts: Optiona
     # 3. 주차장 / 도로 / 교통 (주차선, 아스팔트, 차단기 등)
     parking_keywords = [
         "주차장", "주차선", "문콕", "칼치기", "아스팔트", "차단기", "골목", "보복운전", 
-        "난폭운전", "신호위반", "횡단보도", "차도", "접촉사고", "주차빌런", "2칸주차", "주차"
+        "난폭운전", "신호위반", "횡단보도", "차도", "접촉사고", "주차빌런", "2칸주차", "주차",
+        "두 칸", "두칸", "문틈", "0cm", "밀착", "차량", "자동차", "외제차", "비싼 차",
+        "긁힐까", "견인", "렉카", "크레인", "봉쇄", "주차구역", "카스토퍼", "단속반", "휠클램프"
     ]
     parking_score = sum(1 for k in parking_keywords if k in text)
 
@@ -1264,7 +1286,335 @@ def detect_setting(setting_text: str = "", title: str = "", scene_texts: Optiona
     return "default_modern"
 
 
-def make_background(color, pose: str, scene_text: str = "", setting_type: str = "") -> Image.Image:
+def resolve_visual_props(scene: SceneBeat, idx: int, total: int, setting_type: str, scene_text: str) -> List[str]:
+    """씬 데이터의 visual_props 또는 텍스트 문맥을 분석하여 1:1 시각 오브젝트 확정."""
+    raw_props = list(getattr(scene, "visual_props", []) or [])
+    text = (scene_text or "").lower()
+
+    is_parking = (setting_type == "parking_road") or any(k in text for k in [
+        "주차", "두 칸", "두칸", "외제차", "밀착", "견인", "렉카", "차량", "자동차", "문틈", "0cm", "긁힐"
+    ])
+
+    if is_parking:
+        has_tow = any("tow" in p or "견인" in p or "렉카" in p for p in raw_props) or any(k in text for k in ["견인", "렉카", "크레인", "단속", "끌려", "들려", "실려"])
+        has_tight = any("tight" in p or "block" in p or "jam" in p or "밀착" in p for p in raw_props) or any(k in text for k in ["밀착", "0cm", "문틈", "봉쇄", "가로막", "바짝", "참교육 차"])
+        has_double = any("double" in p or "luxury" in p or "두 칸" in p for p in raw_props) or any(k in text for k in ["두 칸", "두칸", "삐딱", "외제차", "비싼 차", "긁힐까", "주차선"])
+
+        if has_tow or (idx >= max(4, total - 2) and not has_tight and not has_double):
+            if "tow_truck_lifting" not in raw_props:
+                raw_props.append("tow_truck_lifting")
+        elif has_tight or (idx in (3, 4) and not has_double):
+            if "tight_blocking_car" not in raw_props:
+                raw_props.append("tight_blocking_car")
+            if "door_jammed" not in raw_props:
+                raw_props.append("door_jammed")
+        else:
+            if "luxury_car_double_parked" not in raw_props:
+                raw_props.append("luxury_car_double_parked")
+
+    return raw_props
+
+
+def draw_parking_background_base(d: ImageDraw.ImageDraw) -> None:
+    """지하 주차장 공통 인프라 벡터 드로잉 (조명, 덕트, 안내 띠, 안전 기둥, 아스팔트 주차 구획)."""
+    # 1. 지하 주차장 벽면
+    d.rectangle((0, 0, W, FLOOR_Y), fill=(38, 42, 50))
+
+    # 2. 상단 공조 덕트 및 소방 배관
+    d.rectangle((0, 0, W, 175), fill=(25, 28, 35))
+    d.rectangle((80, 65, W - 80, 105), fill=(60, 66, 78))
+    for vy in range(90, W - 80, 120):
+        d.line([(vy, 65), (vy, 105)], fill=(40, 45, 55), width=3)
+    # 스프링클러 배관 (Red)
+    d.line([(0, 130), (W, 130)], fill=(195, 45, 45), width=6)
+    for spx in (200, 540, 880):
+        d.line([(spx, 130), (spx, 150)], fill=(195, 45, 45), width=4)
+        d.ellipse((spx - 6, 148, spx + 6, 160), fill=(240, 180, 30))
+
+    # 3. 천장 LED 조명 패널 및 투사광
+    for lx in (270, 810):
+        d.rounded_rectangle((lx - 110, 170, lx + 110, 190), radius=4, fill=(240, 245, 255), outline=(180, 200, 230), width=2)
+        d.polygon([(lx - 100, 190), (lx + 100, 190), (lx + 220, 520), (lx - 220, 520)], fill=(48, 54, 66))
+
+    # 4. 벽면 상부 녹색 안내 띠 (차량 높이에 가려지지 않도록 FLOOR_Y-470 ~ FLOOR_Y-380에 배치)
+    guide_y0, guide_y1 = FLOOR_Y - 470, FLOOR_Y - 380
+    d.rectangle((0, guide_y0, W, guide_y1), fill=(24, 115, 68))
+    d.line([(0, guide_y0), (W, guide_y0)], fill=(255, 255, 255), width=3)
+    d.line([(0, guide_y1), (W, guide_y1)], fill=(255, 255, 255), width=3)
+    d.text((540, (guide_y0 + guide_y1) // 2), "[ 지하 2층 주차구역 B2-01 ~ B2-08 ]", font=get_font(30), fill=(245, 255, 245), anchor="mm")
+
+    # 5. 콘크리트 안전 기둥 (좌측 벽면 끝 x: 10~95)
+    d.rectangle((10, 180, 95, FLOOR_Y), fill=(52, 58, 68), outline=(22, 26, 32), width=3)
+    for hy in range(FLOOR_Y - 300, FLOOR_Y, 36):
+        d.polygon([(10, hy), (35, hy), (35, min(FLOOR_Y, hy + 18)), (10, min(FLOOR_Y, hy + 18))], fill=(245, 200, 25))
+    d.rounded_rectangle((20, 360, 85, 425), radius=6, fill=(22, 26, 32), outline=(245, 200, 25), width=2)
+    d.text((52, 392), "B2", font=get_font(28), fill=(255, 255, 255), anchor="mm")
+
+    # 6. CCTV 카메라 (우측 상단)
+    d.rectangle((960, 215, 1000, 235), fill=(40, 45, 55))
+    d.polygon([(940, 230), (970, 220), (970, 250), (940, 240)], fill=(220, 225, 235), outline=(30, 35, 45))
+    d.ellipse((935, 232, 943, 238), fill=(255, 50, 50))
+
+    # 7. 아스팔트 바닥면 (FLOOR_Y ~ H)
+    d.rectangle((0, FLOOR_Y, W, H), fill=(34, 36, 42))
+    d.rectangle((0, FLOOR_Y, W, FLOOR_Y + 14), fill=(60, 64, 75))
+
+    # 8. 노란색 주차 구획선 (왼쪽 B2-01, 오른쪽 B2-02, 문제의 중앙 침범선 x: 540)
+    d.line([(180, FLOOR_Y), (60, H)], fill=(245, 205, 30), width=14)
+    d.line([(540, FLOOR_Y), (420, H)], fill=(245, 205, 30), width=16)
+    d.line([(900, FLOOR_Y), (780, H)], fill=(245, 205, 30), width=14)
+
+    # 9. 바닥 카스토퍼 (주차 멈춤턱)
+    for cx in (360, 720):
+        d.rounded_rectangle((cx - 85, FLOOR_Y + 100, cx + 85, FLOOR_Y + 128), radius=5, fill=(45, 48, 56), outline=(15, 18, 22), width=2)
+        d.rectangle((cx - 55, FLOOR_Y + 106, cx - 25, FLOOR_Y + 122), fill=(245, 210, 35))
+        d.rectangle((cx + 25, FLOOR_Y + 106, cx + 55, FLOOR_Y + 122), fill=(245, 210, 35))
+
+    d.text((360, FLOOR_Y + 45), "B2-01", font=get_font(28), fill=(160, 165, 180), anchor="mm")
+    d.text((720, FLOOR_Y + 45), "B2-02", font=get_font(28), fill=(160, 165, 180), anchor="mm")
+
+
+def draw_luxury_car_double_parked(d: ImageDraw.ImageDraw, x_center: int = 540, y_bottom: int = FLOOR_Y + 10) -> None:
+    """두 칸을 물고 삐딱하게 주차된 거대 럭셔리 세단/쿠페 빌런 차량."""
+    w, h = 760, 270
+    x0 = x_center - w // 2
+    y0 = y_bottom - h
+
+    # 1. 차체 밑 바닥 접지 그림자
+    d.ellipse((x0 + 40, y_bottom - 25, x0 + w - 40, y_bottom + 35), fill=(15, 16, 20))
+
+    # 2. 메인 차체 (메탈릭 다크 건메탈 바디)
+    body_poly = [
+        (x0 + 20, y0 + 170), (x0 + 10, y0 + 140), (x0 + 100, y0 + 115),
+        (x0 + 260, y0 + 105), (x0 + 360, y0 + 25), (x0 + 580, y0 + 25),
+        (x0 + 680, y0 + 105), (x0 + 745, y0 + 125), (x0 + 755, y0 + 160),
+        (x0 + 735, y0 + 215), (x0 + 630, y0 + 215), (x0 + 530, y0 + 215),
+        (x0 + 310, y0 + 215), (x0 + 210, y0 + 215), (x0 + 50, y0 + 215)
+    ]
+    d.polygon(body_poly, fill=(26, 30, 40), outline=(15, 18, 25))
+
+    # 3. 차체 상단 메탈릭 하이라이트 레이어
+    d.polygon([
+        (x0 + 100, y0 + 115), (x0 + 260, y0 + 105), (x0 + 360, y0 + 25),
+        (x0 + 580, y0 + 25), (x0 + 680, y0 + 105), (x0 + 745, y0 + 125),
+        (x0 + 730, y0 + 138), (x0 + 260, y0 + 115), (x0 + 95, y0 + 125)
+    ], fill=(42, 48, 62))
+
+    # 4. 틴팅 글래스 윈도우 & 반사광
+    win_poly = [
+        (x0 + 275, y0 + 102), (x0 + 365, y0 + 36),
+        (x0 + 570, y0 + 36), (x0 + 665, y0 + 102)
+    ]
+    d.polygon(win_poly, fill=(16, 22, 30), outline=(65, 75, 95), width=3)
+    d.line([(x0 + 465, y0 + 36), (x0 + 465, y0 + 102)], fill=(26, 30, 40), width=8) # B필러
+    d.polygon([(x0 + 340, y0 + 102), (x0 + 410, y0 + 36), (x0 + 440, y0 + 36), (x0 + 370, y0 + 102)], fill=(65, 120, 180))
+    d.polygon([(x0 + 490, y0 + 102), (x0 + 530, y0 + 36), (x0 + 550, y0 + 36), (x0 + 510, y0 + 102)], fill=(65, 120, 180))
+
+    # 5. 크롬 캐릭터 라인 & 도어 캐치 핸들
+    d.line([(x0 + 110, y0 + 132), (x0 + 720, y0 + 132)], fill=(70, 80, 100), width=3)
+    d.line([(x0 + 275, y0 + 102), (x0 + 275, y0 + 205)], fill=(18, 22, 30), width=3)
+    d.line([(x0 + 465, y0 + 102), (x0 + 465, y0 + 205)], fill=(18, 22, 30), width=3)
+    d.rounded_rectangle((x0 + 340, y0 + 140, x0 + 390, y0 + 150), radius=3, fill=(225, 230, 240), outline=(50, 55, 65))
+    d.rounded_rectangle((x0 + 490, y0 + 140, x0 + 540, y0 + 150), radius=3, fill=(225, 230, 240), outline=(50, 55, 65))
+
+    # 6. 사이드 미러 (접지 않고 활짝 펼쳐둠)
+    d.polygon([(x0 + 250, y0 + 95), (x0 + 290, y0 + 90), (x0 + 285, y0 + 115), (x0 + 255, y0 + 112)], fill=(26, 30, 40), outline=(80, 90, 110), width=2)
+
+    # 7. 헤드라이트 (아이스블루 LED) & 테일램프 (딥레드 LED)
+    d.polygon([(x0 + 15, y0 + 142), (x0 + 90, y0 + 125), (x0 + 75, y0 + 160), (x0 + 22, y0 + 165)], fill=(210, 245, 255), outline=(130, 190, 240), width=2)
+    d.polygon([(x0 + 740, y0 + 132), (x0 + 752, y0 + 148), (x0 + 740, y0 + 162), (x0 + 695, y0 + 145)], fill=(240, 35, 45), outline=(140, 15, 20), width=2)
+
+    # 8. 대형 스포츠 휠 & 타이어 (2개)
+    for wx in (x0 + 160, x0 + 580):
+        wy = y_bottom - 45
+        R_tire = 62
+        d.ellipse((wx - R_tire, wy - R_tire, wx + R_tire, wy + R_tire), fill=(18, 20, 24), outline=(10, 12, 15), width=4)
+        d.arc((wx - R_tire + 14, wy - R_tire + 14, wx + R_tire - 14, wy + R_tire - 14), start=30, end=110, fill=(235, 30, 30), width=10)
+        d.ellipse((wx - R_tire + 16, wy - R_tire + 16, wx + R_tire - 16, wy + R_tire - 16), fill=(65, 72, 85), outline=(190, 200, 215), width=3)
+        for sp in range(5):
+            ang = sp * (2 * math.pi / 5)
+            sx = wx + int(math.cos(ang) * (R_tire - 20))
+            sy = wy + int(math.sin(ang) * (R_tire - 20))
+            d.line([(wx, wy), (sx, sy)], fill=(195, 205, 220), width=5)
+        d.ellipse((wx - 12, wy - 12, wx + 12, wy + 12), fill=(30, 35, 45), outline=(235, 240, 250), width=2)
+
+    # 9. 골드 VIP 번호판 [ 77가 7777 ]
+    d.rounded_rectangle((x0 + 35, y0 + 175, x0 + 135, y0 + 205), radius=4, fill=(245, 245, 250), outline=(20, 22, 28), width=2)
+    d.text((x0 + 85, y0 + 190), "77가 7777", font=get_font(18), fill=(20, 22, 28), anchor="mm")
+
+    # 10. [핵심 연출: 두 칸 주차 침범 시각 태그 및 경고선]
+    tag_x, tag_y = x_center, y0 - 30
+    d.polygon([(tag_x - 12, tag_y + 36), (tag_x + 12, tag_y + 36), (tag_x, tag_y + 52)], fill=(245, 40, 40))
+    d.rounded_rectangle((tag_x - 160, tag_y - 20, tag_x + 160, tag_y + 36), radius=10, fill=(245, 40, 40), outline=(255, 235, 235), width=3)
+    d.text((tag_x, tag_y + 8), "[ 2칸 독점 무개념 주차 ]", font=get_font(26), fill=(255, 255, 255), anchor="mm")
+
+
+def draw_tight_blocking_car(d: ImageDraw.ImageDraw, x_center: int = 540, y_bottom: int = FLOOR_Y + 10) -> None:
+    """문틈 0cm 밀착 봉쇄 참교육 씬 (빌런차 운전석 문을 0cm로 막아선 정의의 경차)."""
+    # 1. 우측: 갇혀버린 빌런 럭셔리 세단 (x: 535 ~ 1030)
+    vx0, vy_bot = 535, y_bottom
+    vw, vh = 510, 260
+    vy0 = vy_bot - vh
+    d.ellipse((vx0 + 30, vy_bot - 20, vx0 + vw - 20, vy_bot + 30), fill=(15, 16, 20))
+    v_poly = [
+        (vx0, vy0 + 100), (vx0 + 120, vy0 + 25), (vx0 + 360, vy0 + 25),
+        (vx0 + 460, vy0 + 105), (vx0 + 510, vy0 + 130), (vx0 + 510, vy0 + 180),
+        (vx0 + 490, vy0 + 210), (vx0 + 410, vy0 + 210), (vx0 + 320, vy0 + 210),
+        (vx0 + 140, vy0 + 210), (vx0 + 50, vy0 + 210), (vx0, vy0 + 210)
+    ]
+    d.polygon(v_poly, fill=(28, 32, 42), outline=(15, 18, 25))
+    d.polygon([(vx0 + 10, vy0 + 100), (vx0 + 125, vy0 + 35), (vx0 + 350, vy0 + 35), (vx0 + 440, vy0 + 100)], fill=(16, 20, 28), outline=(60, 70, 90), width=2)
+    d.rounded_rectangle((vx0 + 70, vy0 + 135, vx0 + 115, vy0 + 145), radius=3, fill=(200, 205, 215))
+    for wx in (vx0 + 90, vx0 + 370):
+        d.ellipse((wx - 52, vy_bot - 45 - 52, wx + 52, vy_bot - 45 + 52), fill=(18, 20, 24), outline=(8, 10, 12), width=4)
+        d.ellipse((wx - 34, vy_bot - 45 - 34, wx + 34, vy_bot - 45 + 34), fill=(60, 68, 80), outline=(180, 190, 205), width=3)
+    # 접혀버린 운전석 사이드미러 (강제 폴딩)
+    d.polygon([(vx0 + 5, vy0 + 95), (vx0 + 25, vy0 + 85), (vx0 + 20, vy0 + 110), (vx0 + 2, vy0 + 108)], fill=(20, 24, 32), outline=(90, 100, 120))
+    d.text((vx0 + 15, vy0 + 70), "접힘", font=get_font(18), fill=(245, 80, 80), anchor="mm")
+
+    # 2. 좌측: 0cm로 밀착 가로막은 참교육 경차 (x: 50 ~ 535) - 박스형 경차 레이/캐스퍼
+    rx0, ry_bot = 50, y_bottom
+    rw, rh = 485, 275
+    ry0 = ry_bot - rh
+    d.ellipse((rx0 + 20, ry_bot - 20, rx0 + rw - 10, ry_bot + 30), fill=(15, 16, 20))
+    r_poly = [
+        (rx0 + 10, ry0 + 180), (rx0 + 20, ry0 + 120), (rx0 + 90, ry0 + 110),
+        (rx0 + 140, ry0 + 20), (rx0 + 440, ry0 + 20), (rx0 + rw, ry0 + 50),
+        (rx0 + rw, ry0 + 215), (rx0 + 410, ry0 + 215), (rx0 + 320, ry0 + 215),
+        (rx0 + 170, ry0 + 215), (rx0 + 80, ry0 + 215), (rx0 + 10, ry0 + 215)
+    ]
+    d.polygon(r_poly, fill=(245, 248, 252), outline=(30, 35, 45), width=3)
+    d.polygon([(rx0 + 140, ry0 + 20), (rx0 + 440, ry0 + 20), (rx0 + rw, ry0 + 50), (rx0 + rw, ry0 + 65), (rx0 + 130, ry0 + 65)], fill=(255, 105, 30))
+    d.polygon([(rx0 + 100, ry0 + 110), (rx0 + 155, ry0 + 35), (rx0 + 430, ry0 + 35), (rx0 + 465, ry0 + 110)], fill=(40, 140, 200), outline=(25, 35, 45), width=2)
+    d.line([(rx0 + 285, ry0 + 35), (rx0 + 285, ry0 + 110)], fill=(245, 248, 252), width=6)
+    for wx in (rx0 + 125, rx0 + 365):
+        d.ellipse((wx - 48, ry_bot - 42 - 48, wx + 48, ry_bot - 42 + 48), fill=(22, 24, 28), outline=(10, 12, 14), width=3)
+        d.ellipse((wx - 30, ry_bot - 42 - 30, wx + 30, ry_bot - 42 + 30), fill=(240, 245, 250), outline=(255, 105, 30), width=3)
+    d.rounded_rectangle((rx0 + 25, ry0 + 155, rx0 + 105, ry0 + 185), radius=3, fill=(255, 255, 255), outline=(20, 22, 28), width=2)
+    d.text((rx0 + 65, ry0 + 170), "00참 7777", font=get_font(16), fill=(20, 22, 28), anchor="mm")
+
+    # 3. [핵심 연출: 0cm 문틈 밀착 봉쇄 시각 측정선 & 경고 그래픽]
+    seam_x = 535
+    for sy in range(vy0 - 20, vy_bot + 10, 16):
+        d.line([(seam_x, sy), (seam_x, sy + 10)], fill=(255, 30, 30), width=4)
+    d.text((seam_x, vy0 + 90), "💥", font=get_font(38), fill=(255, 220, 0), anchor="mm")
+    d.text((seam_x, vy0 + 150), "⚡", font=get_font(34), fill=(255, 230, 50), anchor="mm")
+
+    badge_y = vy0 - 45
+    d.rounded_rectangle((seam_x - 170, badge_y - 25, seam_x + 170, badge_y + 35), radius=12, fill=(20, 24, 32), outline=(255, 45, 45), width=4)
+    d.text((seam_x, badge_y + 5), "[ 문틈 간격 0.0 cm ]", font=get_font(28), fill=(255, 230, 50), anchor="mm")
+
+    bot_badge_y = vy_bot + 45
+    d.rounded_rectangle((seam_x - 170, bot_badge_y - 18, seam_x + 170, bot_badge_y + 22), radius=8, fill=(225, 30, 30), outline=(255, 255, 255), width=2)
+    d.text((seam_x, bot_badge_y + 2), "[ 운전석 탑승 원천 봉쇄 ]", font=get_font(22), fill=(255, 255, 255), anchor="mm")
+
+
+def draw_tow_truck_lifting(d: ImageDraw.ImageDraw, x_center: int = 540, y_bottom: int = FLOOR_Y + 10) -> None:
+    """견인차(렉카)가 빌런 차량 앞바퀴를 공중으로 번쩍 들어 올리는 사이다 클라이맥스 씬."""
+    # 1. 좌측: 대형 견인차 (Wrecker Tow Truck) - x: 40 ~ 460
+    tx0, ty_bot = 40, y_bottom
+    tw, th = 420, 310
+    ty0 = ty_bot - th
+    d.ellipse((tx0 + 20, ty_bot - 20, tx0 + tw + 60, ty_bot + 30), fill=(15, 16, 20))
+
+    # 견인차 캡
+    cab_poly = [
+        (tx0, ty0 + 230), (tx0 + 10, ty0 + 140), (tx0 + 60, ty0 + 130),
+        (tx0 + 100, ty0 + 60), (tx0 + 240, ty0 + 60), (tx0 + 250, ty0 + 150),
+        (tx0 + 250, ty0 + 240), (tx0 + 190, ty0 + 240), (tx0 + 100, ty0 + 240), (tx0, ty0 + 240)
+    ]
+    d.polygon(cab_poly, fill=(245, 175, 25), outline=(20, 24, 30), width=4)
+    d.polygon([(tx0 + 70, ty0 + 130), (tx0 + 105, ty0 + 75), (tx0 + 230, ty0 + 75), (tx0 + 235, ty0 + 130)], fill=(30, 45, 60), outline=(20, 24, 30), width=2)
+    d.text((tx0 + 150, ty0 + 175), "견인 단속", font=get_font(22), fill=(20, 24, 30), anchor="mm")
+    d.text((tx0 + 150, ty0 + 205), "SPECIAL TOW", font=get_font(14), fill=(60, 65, 75), anchor="mm")
+
+    # 견인차 휠
+    for wx in (tx0 + 75, tx0 + 270):
+        d.ellipse((wx - 55, ty_bot - 45 - 55, wx + 55, ty_bot - 45 + 55), fill=(20, 22, 26), outline=(10, 12, 14), width=4)
+        d.ellipse((wx - 35, ty_bot - 45 - 35, wx + 35, ty_bot - 45 + 35), fill=(80, 85, 95), outline=(220, 225, 235), width=4)
+
+    # 견인차 상단 경광등 베이스
+    siren_x, siren_y = tx0 + 170, ty0 + 45
+    d.rounded_rectangle((siren_x - 30, siren_y - 18, siren_x + 30, siren_y + 12), radius=6, fill=(255, 60, 40), outline=(120, 20, 15), width=2)
+    d.ellipse((siren_x - 45, siren_y - 30, siren_x + 45, siren_y + 25), fill=(255, 200, 50))
+
+    # 2. 유압 크레인 붐 암
+    boom_base = (tx0 + 250, ty0 + 160)
+    boom_tip = (tx0 + 470, ty0 + 15)
+    d.line([boom_base, boom_tip], fill=(70, 75, 88), width=24)
+    d.line([boom_base, boom_tip], fill=(160, 170, 185), width=12)
+    d.line([(boom_base[0] + 30, boom_base[1] + 25), (boom_tip[0] - 80, boom_tip[1] + 65)], fill=(225, 180, 30), width=14)
+    d.ellipse((boom_tip[0] - 18, boom_tip[1] - 18, boom_tip[0] + 18, boom_tip[1] + 18), fill=(40, 45, 55), outline=(220, 225, 235), width=3)
+
+    # 3. 강철 체인 & 언더리프트 크래들
+    hook_point = (boom_tip[0] + 10, boom_tip[1] + 120)
+    d.line([boom_tip, hook_point], fill=(210, 215, 225), width=5)
+    for cy in range(int(boom_tip[1] + 20), int(hook_point[1]), 18):
+        d.ellipse((boom_tip[0] + 5, cy, boom_tip[0] + 15, cy + 12), outline=(220, 225, 235), width=3)
+    cradle_pt = (hook_point[0] + 50, ty_bot - 160)
+    d.line([hook_point, cradle_pt], fill=(60, 65, 75), width=16)
+
+    # 4. 공중으로 번쩍 들려 올라간 빌런 럭셔리 세단 (대각선 틸팅)
+    cx0, cy_lift = cradle_pt[0] - 30, cradle_pt[1]
+    tilted_poly = [
+        (cx0, cy_lift), (cx0 + 20, cy_lift - 50), (cx0 + 130, cy_lift - 90),
+        (cx0 + 220, cy_lift - 160), (cx0 + 390, cy_lift - 130), (cx0 + 470, cy_lift - 60),
+        (cx0 + 560, cy_lift + 20), (cx0 + 550, cy_lift + 85),
+        (cx0 + 460, ty_bot - 35), (cx0 + 380, ty_bot - 35),
+        (cx0 + 140, cy_lift + 40), (cx0 + 40, cy_lift + 30)
+    ]
+    d.polygon(tilted_poly, fill=(28, 32, 42), outline=(15, 18, 25), width=3)
+    d.polygon([
+        (cx0 + 140, cy_lift - 85), (cx0 + 225, cy_lift - 150),
+        (cx0 + 385, cy_lift - 122), (cx0 + 455, cy_lift - 65)
+    ], fill=(16, 22, 30), outline=(60, 70, 85), width=2)
+
+    # 공중에 뜬 앞바퀴 타이어
+    front_wheel = (cx0 + 90, cy_lift + 15)
+    d.ellipse((front_wheel[0] - 46, front_wheel[1] - 46, front_wheel[0] + 46, front_wheel[1] + 46), fill=(20, 22, 26), outline=(10, 12, 14), width=3)
+    d.ellipse((front_wheel[0] - 28, front_wheel[1] - 28, front_wheel[0] + 28, front_wheel[1] + 28), fill=(70, 75, 85), outline=(190, 200, 215), width=3)
+
+    # 지면에 닿은 뒷바퀴 & 스키드 마크
+    rear_wheel = (cx0 + 420, ty_bot - 45)
+    d.ellipse((rear_wheel[0] - 52, rear_wheel[1] - 52, rear_wheel[0] + 52, rear_wheel[1] + 52), fill=(18, 20, 24), outline=(8, 10, 12), width=4)
+    d.ellipse((rear_wheel[0] - 32, rear_wheel[1] - 32, rear_wheel[0] + 32, rear_wheel[1] + 32), fill=(60, 65, 75), outline=(180, 190, 200), width=3)
+    d.line([(rear_wheel[0] - 120, ty_bot), (rear_wheel[0] + 20, ty_bot)], fill=(12, 12, 16), width=10)
+    for sm_x, sm_r in ((rear_wheel[0] - 40, 24), (rear_wheel[0] - 80, 32), (rear_wheel[0] - 130, 20)):
+        d.ellipse((sm_x - sm_r, ty_bot - 10 - sm_r, sm_x + sm_r, ty_bot - 10 + sm_r), fill=(190, 195, 205))
+
+    # 견인 경고 딱지 스티커
+    sticker_box = (cx0 + 200, cy_lift - 120, cx0 + 310, cy_lift - 65)
+    d.rectangle(sticker_box, fill=(245, 35, 35), outline=(255, 255, 255), width=2)
+    d.text((cx0 + 255, cy_lift - 102), "강제 견인", font=get_font(20), fill=(255, 255, 255), anchor="mm")
+    d.text((cx0 + 255, cy_lift - 80), "과태료 부과", font=get_font(14), fill=(255, 230, 70), anchor="mm")
+
+    # 5. 상단 사이다 현수막 배너
+    banner_y = ty0 - 30
+    d.rounded_rectangle((W // 2 - 250, banner_y - 25, W // 2 + 250, banner_y + 35), radius=12, fill=(215, 25, 25), outline=(255, 220, 0), width=4)
+    d.text((W // 2, banner_y + 5), "[ 불법주차 즉시 강제 견인 집행 ]", font=get_font(28), fill=(255, 245, 200), anchor="mm")
+
+
+def draw_parking_lot_scene(d: ImageDraw.ImageDraw, scene_idx: int = 0, total_scenes: int = 7,
+                           visual_props: Optional[List[str]] = None, scene_text: str = "") -> None:
+    """주차장 테마 문맥 인식형 작화: 기본 배경 + 씬 데이터(visual_props) 1:1 차량 오브젝트 합성."""
+    # 1. 공통 지하 주차장 인프라 드로잉
+    draw_parking_background_base(d)
+
+    # 2. 씬 데이터 및 visual_props에 따른 차량 합성
+    props = visual_props or []
+    text = (scene_text or "").lower()
+
+    if "tow_truck_lifting" in props or (scene_idx >= max(4, total_scenes - 2) and any(k in text for k in ["견인", "렉카", "크레인", "끌려", "단속"])):
+        draw_tow_truck_lifting(d, 540, FLOOR_Y + 10)
+    elif "tight_blocking_car" in props or any(k in text for k in ["밀착", "0cm", "문틈", "봉쇄", "가로막", "바짝", "참교육 차"]):
+        draw_tight_blocking_car(d, 540, FLOOR_Y + 10)
+    else:
+        # 씬 1~3 기본: 두 칸 물고 삐딱하게 주차된 빌런 차량
+        draw_luxury_car_double_parked(d, 540, FLOOR_Y + 10)
+
+
+def make_background(color, pose: str, scene_text: str = "", setting_type: str = "",
+                    scene_idx: int = 0, total_scenes: int = 7, visual_props: Optional[List[str]] = None) -> Image.Image:
     """장소 키워드 프리셋에 따라 고품질 벡터/오브젝트 레이어가 합성된 완성형 무대 배경을 생성."""
     if not setting_type:
         setting_type = detect_setting(scene_text)
@@ -1348,23 +1698,9 @@ def make_background(color, pose: str, scene_text: str = "", setting_type: str = 
         return img
 
     elif setting_type == "parking_road":
-        # [3. 주차장 / 도로 배경]
-        d.rectangle((0, 0, W, FLOOR_Y), fill=(45, 48, 56))
-        # 콘크리트 벽면 및 녹색 안내 띠
-        d.rectangle((0, FLOOR_Y - 280, W, FLOOR_Y - 170), fill=(35, 125, 75))
-        # 주차장 기둥 (x: 80~220)
-        d.rectangle((80, 260, 220, FLOOR_Y), fill=(55, 60, 70), outline=(25, 28, 35), width=4)
-        d.rounded_rectangle((105, 380, 195, 470), radius=8, fill=(25, 28, 35), outline=(255, 255, 255), width=3)
-        d.text((150, 425), "B2", font=get_font(42), fill=(255, 255, 255), anchor="mm")
-        # 아스팔트 바닥
-        d.rectangle((0, FLOOR_Y, W, H), fill=(38, 40, 46))
-        for px in range(140, W + 100, 290):
-            d.line([(px, FLOOR_Y), (px - 140, H)], fill=(255, 215, 30), width=12) # 노란 주차 구획선
-            d.rounded_rectangle((px - 50, FLOOR_Y + 70, px + 50, FLOOR_Y + 95), radius=4, fill=(200, 205, 215), outline=(80, 85, 95), width=2)
-        # 차단기 바 (우측)
-        d.rectangle((880, 360, 920, FLOOR_Y), fill=(230, 80, 40))
-        for by in range(400, 850, 50):
-            d.polygon([(920, by), (W, by - 60), (W, by - 30), (920, by + 30)], fill=(255, 255, 255))
+        # [3. 주차장 문맥 인식형 작화 엔진: 인프라 + 씬별 자동차 레이어 합성]
+        draw_parking_lot_scene(d, scene_idx=scene_idx, total_scenes=total_scenes,
+                               visual_props=visual_props, scene_text=scene_text)
         return img
 
     elif setting_type == "office":
@@ -1881,8 +2217,10 @@ class SceneVisuals:
         self.cam = parse_camera(scene.camera_work)
         self.scene_text = f"{scene.stickman_action} {scene.tts_narration} {scene.subtitle_text}"
         self.episode_setting = episode_setting or detect_setting(scene.stickman_action, title, [self.scene_text])
+        self.visual_props = resolve_visual_props(scene, idx, total, self.episode_setting, self.scene_text)
         bg_color = POSE_BG.get(pose, BG_COLORS[idx % len(BG_COLORS)])
-        self.bg = make_background(bg_color, pose, self.scene_text, setting_type=self.episode_setting)
+        self.bg = make_background(bg_color, pose, self.scene_text, setting_type=self.episode_setting,
+                                  scene_idx=idx, total_scenes=total, visual_props=self.visual_props)
         overlay = make_overlay(title, idx, total, scene.subtitle_text, scene.stickman_action)
         # 상단 오버레이는 타이틀 바 높이(204px)까지만 크롭하여 말풍선과 절대 겹치지 않도록 보장
         self.top = overlay.crop((0, 0, W, 204))
@@ -2110,6 +2448,20 @@ class SceneVisuals:
 
         # --- 상황별 소품 (Props) 자동 렌더링
         draw_props(d, main_fig, foe_fig, self.scene_text, self.main_pose, self.foe_pose, ta, setting_type=self.episode_setting)
+
+        # 주차장 설정 시: 동적 전경 애니메이션 (견인차 사이렌 회전 빔, 0cm 밀착 스파크)
+        if self.episode_setting == "parking_road":
+            if "tow_truck_lifting" in self.visual_props:
+                siren_x, siren_y = 210, 1065
+                rot_ang = ta * 14
+                dx1, dy1 = math.cos(rot_ang) * 90, math.sin(rot_ang) * 35
+                d.line([(siren_x - dx1, siren_y - dy1), (siren_x + dx1, siren_y + dy1)], fill=(255, 235, 80), width=6)
+                d.line([(siren_x - dy1, siren_y + dx1), (siren_x + dy1, siren_y - dx1)], fill=(255, 210, 40), width=3)
+                d.ellipse((siren_x - 35, siren_y - 25, siren_x + 35, siren_y + 25), fill=(255, 180, 20))
+            elif "tight_blocking_car" in self.visual_props:
+                if int(ta * 12) % 2 == 0:
+                    spk_y = 1080 + int(math.sin(ta * 20) * 40)
+                    d.text((535, spk_y), "⚡", font=get_font(34), fill=(255, 230, 40), anchor="mm")
 
         # 편의점 설정 시: 주인공 A가 계산대 뒤에 서 있도록 카운터 상판 및 POS 전경 재합성 (A의 하반신을 자연스럽게 가림)
         if self.episode_setting == "convenience_store":

@@ -12,6 +12,8 @@ class SceneBeat(BaseModel):
     sfx_cue: str = Field(description="타임스탬프별 효과음 큐 (예: 0.5s punch_hit, 2.0s cartoon_slip)")
     tts_narration: str = Field(description="찰진 구어체 내레이션/대사")
     subtitle_text: str = Field(description="화면 중앙/하단에 찍힐 짧은 자막")
+    visual_props: List[str] = Field(default_factory=list, description="씬별 필수 시각 오브젝트 목록 (상황과 1:1로 매칭되는 핵심 시각물)")
+
 
 
 class ReverseEngineeringAnalysis(BaseModel):
