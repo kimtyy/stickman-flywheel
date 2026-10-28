@@ -2,7 +2,7 @@ import importlib
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -731,71 +731,163 @@ tab_step1, tab_step2, tab_step3, tab_step4, tab_step5 = st.tabs([
 
 
 # ------------------------------------------------------------------------------
-# [Step 1: 기획 & 대본] (트렌드 감지, 소재 추출, 신규 대본 생성, 감정 역공학)
+# [Step 1: 기획 & 대본] (무인 자율주행 관제탑: 4단계 레이아웃)
 # ------------------------------------------------------------------------------
 with tab_step1:
-    # --------------------------------------------------------------------------
-    # 1. 실시간 트렌드 자동 큐레이션 & 구글 캘린더 '밥상 서빙' (모바일 RSVP 원클릭 승인)
-    # --------------------------------------------------------------------------
+    now_dt = datetime.now()
+    now_time_str = now_dt.strftime("%H:%M")
+    cur_h_float = now_dt.hour + (now_dt.minute / 60.0)
+
+    # ==========================================================================
+    # 1. 최상단: 🟢 자율주행(Autopilot) 4단계 상태 배너
+    # ==========================================================================
+    current_autopilot_enabled = is_autopilot_enabled()
+
+    # 4단계 상태 판별
+    is_step1_done = (cur_h_float >= 9.0)
+    step1_badge = "✅ 서빙 완료" if is_step1_done else "⏳ 09:00 서빙 대기"
+    step1_color = "#10B981" if is_step1_done else "#64748B"
+    step1_border = "#10B981" if is_step1_done else "rgba(255,255,255,0.1)"
+
+    is_step2_done = (cur_h_float >= 15.0)
+    is_step2_active = (9.0 <= cur_h_float < 15.0)
+    step2_badge = "✅ 발송 완료" if is_step2_done else ("🔔 발송 예정" if is_step2_active else "⏳ 대기")
+    step2_color = "#10B981" if is_step2_done else ("#F59E0B" if is_step2_active else "#64748B")
+    step2_border = "#10B981" if is_step2_done else ("#F59E0B" if is_step2_active else "rgba(255,255,255,0.1)")
+
+    is_step3_done = (cur_h_float >= 16.0)
+    is_step3_imminent = (15.0 <= cur_h_float < 16.0)
+    step3_badge = "✅ 1위 자동승인" if is_step3_done else ("🚨 자동승인 임박" if is_step3_imminent else "⏳ 자동승인 대기")
+    step3_color = "#10B981" if is_step3_done else ("#EF4444" if is_step3_imminent else "#64748B")
+    step3_border = "#10B981" if is_step3_done else ("#EF4444" if is_step3_imminent else "rgba(255,255,255,0.1)")
+
+    is_step4_done = (cur_h_float >= 17.5)
+    is_step4_waiting = (16.0 <= cur_h_float < 17.5)
+    step4_badge = "🚀 발행 완수" if is_step4_done else ("⏳ 렌더/배포 대기" if is_step4_waiting else "⏳ 골든타임 배포")
+    step4_color = "#10B981" if is_step4_done else ("#38BDF8" if is_step4_waiting else "#64748B")
+    step4_border = "#10B981" if is_step4_done else ("#38BDF8" if is_step4_waiting else "rgba(255,255,255,0.1)")
+
+    if cur_h_float < 9.0:
+        flight_progress = max(0.10, cur_h_float / 9.0 * 0.25)
+    elif cur_h_float < 15.0:
+        flight_progress = 0.25 + ((cur_h_float - 9.0) / 6.0) * 0.25
+    elif cur_h_float < 16.0:
+        flight_progress = 0.50 + ((cur_h_float - 15.0) / 1.0) * 0.25
+    elif cur_h_float < 17.5:
+        flight_progress = 0.75 + ((cur_h_float - 16.0) / 1.5) * 0.20
+    else:
+        flight_progress = 1.0
+
     st.markdown("""
-        <div class="stitch-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <div style="font-weight: 850; font-size: 1.2rem; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.4rem;">🍽️</span> 실시간 트렌드 자동 큐레이션 & 구글 캘린더 '밥상 서빙'
+        <div class="stitch-card" style="padding: 18px 22px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">🛰️</span>
+                    <div>
+                        <div style="font-weight: 850; font-size: 1.18rem; color: #FFFFFF; letter-spacing: -0.01em;">
+                            100% 무인 자율주행(Autopilot) 중앙 관제 센터
+                        </div>
+                        <div style="font-size: 0.78rem; color: #94A3B8;">
+                            [09:00 서빙] ➔ [모바일 RSVP 터치] ➔ [16:00 타임아웃 1위 자동승인] ➔ [17:30 골든타임 무인 발행]
+                        </div>
+                    </div>
                 </div>
-                <div style="font-size: 0.8rem; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38BDF8; padding: 4px 10px; border-radius: 8px; font-weight: 800;">
-                    RSVP 모바일 원클릭 승인
-                </div>
-            </div>
-            <div style="font-size: 0.9rem; color: #94A3B8; margin-bottom: 18px; line-height: 1.6;">
-                최신 쇼츠 트렌드 및 사이다·미러링 썰(편의점·층간소음·갑질 등)을 실시간 분석하여 <strong>오늘자 3대 킬러 대본</strong>을 큐레이션하고, 구글 캘린더에 <strong>초대장(RSVP: [예 / 아니요 / 미정])</strong> 형태로 자동 등록합니다.<br>
-                스마트폰 캘린더 알림에서 <strong>[예]</strong>만 누르면 즉시 [승인 완료]되어 렌더링 파이프라인으로 직행합니다.
             </div>
     """, unsafe_allow_html=True)
 
-    col_cfg1, col_cfg2 = st.columns([1.0, 1.8], gap="medium")
-    with col_cfg1:
-        buffet_date = st.date_input("📅 서빙 기준 일자", value=date.today(), key="buffet_serving_date")
-    with col_cfg2:
-        default_user_email = os.getenv("CALENDAR_USER_EMAIL", os.getenv("GOOGLE_CALENDAR_ID", "user@gmail.com"))
-        target_attendee = st.text_input(
-            "📧 초대받을 구글 캘린더 계정 이메일",
-            value=default_user_email if "@" in default_user_email else "",
-            placeholder="your-google-account@gmail.com",
-            key="buffet_attendee_email",
-            help="스마트폰 구글 캘린더 앱에 로그인된 이메일 계정을 입력하면, 해당 계정으로 [예/아니요] 참석 초대장이 즉시 발송됩니다."
+    col_banner_ctrl1, col_banner_ctrl2 = st.columns([1.8, 1.2], gap="medium")
+    with col_banner_ctrl1:
+        st.caption(f"🕒 현재 시스템 관제 시각: {now_time_str} KST · 플라이휠 자율 진행률 {int(flight_progress * 100)}%")
+        st.progress(flight_progress)
+    with col_banner_ctrl2:
+        new_autopilot_enabled = st.toggle(
+            "자율주행 가동 중 (Autopilot)",
+            value=current_autopilot_enabled,
+            key="autopilot_master_toggle",
+            help="활성화 시 모바일 캘린더 미응답 상태여도 16:00에 1위 후보를 자동 승인하고 17:30 골든타임에 자동 배포합니다."
         )
+        if new_autopilot_enabled != current_autopilot_enabled:
+            set_autopilot_enabled(new_autopilot_enabled)
+            st.session_state["flash"] = f"🤖 무인 자율 주행 모드가 {'[가동 활성화]' if new_autopilot_enabled else '[일시 중지(수동)]'}되었습니다."
+            st.rerun()
 
-    col_act_serve, col_act_check = st.columns([1.6, 1.4], gap="medium")
-    with col_act_serve:
-        btn_curate_serve = st.button("🍽️ 오늘자 3대 킬러 대본 큐레이션 & 캘린더 밥상 서빙", type="primary", use_container_width=True)
-    with col_act_check:
-        btn_check_rsvp = st.button("🔄 모바일 캘린더 RSVP '[예]' 승인 동기화 감지", use_container_width=True)
+    st.markdown(f"""
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px;">
+            <div style="background: #0F172A; border: 1.5px solid {step1_border}; border-radius: 12px; padding: 12px 14px; text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.72rem; color: #38BDF8; font-weight: 800;">STEP 1</span>
+                    <span style="font-size: 0.70rem; color: {step1_color}; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 6px;">{step1_badge}</span>
+                </div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: #FFFFFF;">🍱 09:00 서빙 완료</div>
+                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">3대 킬러 대본 캘린더 등록</div>
+            </div>
+            <div style="background: #0F172A; border: 1.5px solid {step2_border}; border-radius: 12px; padding: 12px 14px; text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.72rem; color: #F59E0B; font-weight: 800;">STEP 2</span>
+                    <span style="font-size: 0.70rem; color: {step2_color}; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 6px;">{step2_badge}</span>
+                </div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: #FFFFFF;">🔔 15:00 리마인드</div>
+                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">16시 자동승인 예고 알림</div>
+            </div>
+            <div style="background: #0F172A; border: 1.5px solid {step3_border}; border-radius: 12px; padding: 12px 14px; text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.72rem; color: #EF4444; font-weight: 800;">STEP 3</span>
+                    <span style="font-size: 0.70rem; color: {step3_color}; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 6px;">{step3_badge}</span>
+                </div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: #FFFFFF;">⚡ 16:00 자동승인 대기</div>
+                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">적중률 1위 대본 자동 채택</div>
+            </div>
+            <div style="background: #0F172A; border: 1.5px solid {step4_border}; border-radius: 12px; padding: 12px 14px; text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.72rem; color: #10B981; font-weight: 800;">STEP 4</span>
+                    <span style="font-size: 0.70rem; color: {step4_color}; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 6px;">{step4_badge}</span>
+                </div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: #FFFFFF;">🚀 17:30 골든타임 배포</div>
+                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">퇴근길 피크 유튜브 자동 예약</div>
+            </div>
+        </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    # 1) 3대 킬러 대본 큐레이션 & 밥상 서빙 실행
-    if btn_curate_serve:
-        bar_curate = st.progress(0.0)
-        status_curate = st.empty()
+    # ==========================================================================
+    # 2. 중상단: 🍱 오늘 구글 캘린더 '밥상 서빙' 현황 모니터
+    # ==========================================================================
+    cal_mgr_inst = CalendarManager()
+    active_serving = cal_mgr_inst.get_current_serving_status()
 
-        def on_curate_progress(msg: str, frac: float):
-            bar_curate.progress(min(max(frac, 0.0), 1.0))
-            status_curate.caption(msg)
+    st.markdown("""
+        <div class="stitch-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <div style="font-weight: 850; font-size: 1.2rem; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem;">🍱</span> 오늘 구글 캘린더 '밥상 서빙' 현황 모니터
+                </div>
+                <div style="font-size: 0.8rem; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38BDF8; padding: 4px 10px; border-radius: 8px; font-weight: 800;">
+                    모바일 구글 캘린더 실시간 연동
+                </div>
+            </div>
+            <div style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 16px; line-height: 1.6;">
+                백그라운드 엔진이 아침 09:00에 캘린더로 올린 <strong>당일 3대 후보 대본(후보 1~3번)</strong>입니다.<br>
+                스마트폰 구글 캘린더 앱에서 <strong>[예(RSVP)]</strong>를 터치하거나, 아래에서 <strong>[📱 즉시 채택]</strong> 버튼을 누르면 즉시 승인되어 렌더링 파이프라인으로 직행합니다.
+            </div>
+    """, unsafe_allow_html=True)
 
-        try:
-            with st.spinner("실시간 트렌드 분석 → 3대 사이다 썰 큐레이션 → 구글 캘린더 초대장 발송 중..."):
-                candidates = run_curation_batch(count=3, progress_callback=on_curate_progress)
-                cal_mgr = CalendarManager()
-                serving_res = cal_mgr.serve_candidate_buffet(
-                    candidates=candidates,
-                    target_date=buffet_date,
-                    attendee_email=target_attendee
-                )
-                st.session_state["flash"] = f"🎉 3대 킬러 대본 큐레이션 완료! 구글 캘린더에 RSVP 초대([예])가 발송되었습니다."
-                st.rerun()
-        except Exception as e:
-            st.error(f"큐레이션 서빙 실패: {e}")
+    col_rsvp_info, col_rsvp_btn = st.columns([2.0, 1.0], gap="medium")
+    with col_rsvp_info:
+        if active_serving:
+            serving_dt_str = active_serving.get("serving_date", str(date.today()))
+            srv_st = active_serving.get("status", "awaiting_rsvp")
+            srv_st_label = "✅ 승인 채택 완료" if srv_st == "approved" else "⏳ RSVP 응답 대기 중 (16:00 1위 자동승인)"
+            srv_st_color = "#10B981" if srv_st == "approved" else "#F59E0B"
+            st.markdown(f"""
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #CBD5E1; padding-top: 6px;">
+                    <span>📅 서빙 기준일: <strong>{serving_dt_str}</strong></span>
+                    <span>·</span>
+                    <span style="color: {srv_st_color}; font-weight: 700;">{srv_st_label}</span>
+                </div>
+            """, unsafe_allow_html=True)
+    with col_rsvp_btn:
+        btn_check_rsvp = st.button("🔄 캘린더 RSVP 감지", use_container_width=True, help="스마트폰 구글 캘린더 앱에서 [예]를 누른 뒤 클릭하면 즉시 동기화됩니다.")
 
-    # 2) 캘린더 RSVP [예] 승인 상태 동기화 감지
     if btn_check_rsvp:
         with st.spinner("구글 캘린더 RSVP 응답 상태 확인 중..."):
             cal_mgr = CalendarManager()
@@ -807,21 +899,9 @@ with tab_step1:
                 st.balloons()
                 st.rerun()
             else:
-                st.info(rsvp_status.get("message", "응답 확인 완료"))
-
-    # 현재 서빙 중인 3대 후보 카드 실시간 모니터
-    cal_mgr_inst = CalendarManager()
-    active_serving = cal_mgr_inst.get_current_serving_status()
+                st.info(rsvp_status.get("message", "응답 확인 완료 (아직 새로운 RSVP 승인이 없습니다)"))
 
     if active_serving and active_serving.get("candidates"):
-        st.markdown("""
-            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
-                <div style="font-weight: 800; font-size: 1.05rem; color: #E2E8F0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                    <span>🍱</span> 현재 서빙된 3대 후보 대본 현황 (모바일 캘린더 연동 모니터)
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
         cand_cols = st.columns(3, gap="small")
         is_already_approved = (active_serving.get("status") == "approved")
         winner_id = active_serving.get("approved_episode_id")
@@ -829,178 +909,96 @@ with tab_step1:
         for idx, c in enumerate(active_serving.get("candidates", [])):
             c_no = c.get("candidate_no", idx + 1)
             hit_pct = c.get("predicted_hit_rate", 95)
-            is_winner = (c.get("episode_id") == winner_id)
+            cand_ep_id = c.get("episode_id")
+            is_winner = (cand_ep_id == winner_id)
+
+            cand_script_obj = None
+            for fld in [APPROVED_DIR, PENDING_DIR]:
+                c_p = fld / f"{cand_ep_id}.json"
+                if c_p.exists():
+                    try:
+                        cand_script_obj = load_script(c_p)
+                        break
+                    except Exception:
+                        pass
+
+            if cand_script_obj:
+                cand_place = cand_script_obj.analysis.transplanted_setting or c.get("category", "일상 상황")
+                if cand_script_obj.scenes:
+                    first_sub = cand_script_obj.scenes[0].subtitle_text or cand_script_obj.scenes[0].tts_narration[:24]
+                    last_sub = cand_script_obj.scenes[-1].subtitle_text or cand_script_obj.scenes[-1].tts_narration[:24]
+                    cand_summary = f"{first_sub} ➔ {last_sub}"
+                else:
+                    cand_summary = f"{cand_script_obj.analysis.extracted_core_desire} (반전: {cand_script_obj.analysis.twist_point})"
+            else:
+                cand_place = c.get("category", "사이다 상황극")
+                cand_summary = "실시간 트렌드 기반 자동 생성된 킬러 사이다 대본"
+
             with cand_cols[idx]:
-                border_color = "#10B981" if is_winner else "#38BDF8"
+                border_color = "#10B981" if is_winner else "rgba(56, 189, 248, 0.4)"
                 badge_bg = "rgba(16, 185, 129, 0.2)" if is_winner else "rgba(56, 189, 248, 0.15)"
-                badge_text = "✅ [예] 승인 채택" if is_winner else f"🏆 적중률 {hit_pct}%"
+                badge_text = "✅ [채택 완료]" if is_winner else f"🏆 적중률 {hit_pct}%"
+                card_bg = "#0B132B" if is_winner else "#0F172A"
 
                 st.markdown(f"""
-                    <div style="background: #0F172A; border: 1.5px solid {border_color}; border-radius: 14px; padding: 14px; height: 100%;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span style="font-weight: 850; font-size: 0.95rem; color: #FFFFFF;">후보 {c_no}</span>
-                            <span style="font-size: 0.76rem; background: {badge_bg}; color: {border_color}; padding: 3px 8px; border-radius: 6px; font-weight: 800;">
-                                {badge_text}
-                            </span>
+                    <div style="background: {card_bg}; border: 1.5px solid {border_color}; border-radius: 14px; padding: 14px; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: 850; font-size: 0.95rem; color: #FFFFFF;">후보 {c_no}</span>
+                                <span style="font-size: 0.74rem; background: {badge_bg}; color: {border_color}; padding: 3px 8px; border-radius: 6px; font-weight: 800;">
+                                    {badge_text}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.80rem; color: #38BDF8; font-weight: 700; margin-bottom: 6px;">
+                                📍 장소: {cand_place}
+                            </div>
+                            <div style="font-size: 0.92rem; font-weight: 700; color: #F8FAFC; margin-bottom: 8px; line-height: 1.4; min-height: 2.6em;">
+                                🎬 {c.get('episode_title')}
+                            </div>
+                            <div style="font-size: 0.80rem; color: #94A3B8; margin-bottom: 10px; line-height: 1.5; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 8px;">
+                                📝 <strong>줄거리:</strong> {cand_summary}
+                            </div>
                         </div>
-                        <div style="font-size: 0.78rem; color: #94A3B8; margin-bottom: 6px;">{c.get('category', '사이다 상황극')}</div>
-                        <div style="font-size: 0.88rem; font-weight: 700; color: #F8FAFC; margin-bottom: 10px; line-height: 1.4;">
-                            {c.get('episode_title')}
-                        </div>
-                        <div style="font-size: 0.75rem; color: #64748B; font-family: 'JetBrains Mono', monospace;">
-                            ID: {c.get('episode_id')}
+                        <div style="font-size: 0.72rem; color: #64748B; font-family: 'JetBrains Mono', monospace; margin-bottom: 8px;">
+                            ID: {cand_ep_id}
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
 
-                if not is_already_approved:
+                if is_winner:
+                    st.success("✅ 당일 채택 완료 (파이프라인 연동)")
+                else:
                     btn_sim = st.button(f"📱 [후보 {c_no}] 즉시 채택", key=f"btn_sim_rsvp_{c_no}", use_container_width=True)
                     if btn_sim:
                         res = cal_mgr_inst.simulate_rsvp_approval(c_no)
                         if res.get("status") == "approved":
-                            ep_id = c['episode_id']
-                            st.session_state["active_ep_id"] = ep_id
+                            st.session_state["active_ep_id"] = cand_ep_id
                             st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
                             st.balloons()
                             st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # --------------------------------------------------------------------------
-    # 2. 골든 타임 타임아웃 자동 승인 & 부재중 무인 자율 주행 모드 (Fail-safe)
-    # --------------------------------------------------------------------------
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <div style="font-weight: 850; font-size: 1.15rem; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.35rem;">🛡️</span> 무인 자율 주행 모드 & 골든타임 자동 발행 안전장치 (Fail-safe)
-                </div>
-                <div style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #10B981; padding: 4px 10px; border-radius: 8px; font-weight: 800;">
-                    3단계 안전 방어망
-                </div>
-            </div>
-            <div style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 14px; line-height: 1.6;">
-                바쁜 일상으로 모바일 캘린더 알림을 미처 확인하지 못하더라도, <strong>오후 16:00 타임아웃</strong> 시 예상 적중률 1위 대본을 자동으로 승인하고 렌더링에 착수하여, 쇼츠 트래픽 피크 시간인 <strong>17:30 ~ 18:00 퇴근길 골든 타임</strong>에 유튜브 자동 예약 발행을 완수합니다.
-            </div>
-    """, unsafe_allow_html=True)
-
-    col_auto_tgl, col_auto_status = st.columns([1.2, 1.8], gap="medium")
-    with col_auto_tgl:
-        current_autopilot_enabled = is_autopilot_enabled()
-        new_autopilot_enabled = st.toggle(
-            "무인 자율 주행 모드 (Autopilot) 활성화",
-            value=current_autopilot_enabled,
-            key="autopilot_master_toggle",
-            help="활성화 시 모바일 캘린더 미응답 상태여도 16:00에 1위 후보를 자동 승인하고 17:30 골든타임에 자동 배포합니다."
-        )
-        if new_autopilot_enabled != current_autopilot_enabled:
-            set_autopilot_enabled(new_autopilot_enabled)
-            st.session_state["flash"] = f"🤖 무인 자율 주행 모드가 {'[활성화]' if new_autopilot_enabled else '[비활성화]'}되었습니다."
-            st.rerun()
-
-    with col_auto_status:
-        autopilot_badge_color = "#10B981" if current_autopilot_enabled else "#94A3B8"
-        autopilot_status_text = "🟢 자율 주행 가동 중 (16:00 자동승인 & 17:30 예약 배포 대기)" if current_autopilot_enabled else "⚪ 수동 모드 (사용자 직접 승인 필요)"
-        st.markdown(f"""
-            <div style="padding: 10px 14px; background: #0F172A; border: 1px solid {autopilot_badge_color}44; border-radius: 10px; font-size: 0.86rem; color: #E2E8F0; font-weight: 600;">
-                {autopilot_status_text}
+    else:
+        st.markdown("""
+            <div style="padding: 24px; background: #0F172A; border: 1px dashed rgba(255,255,255,0.15); border-radius: 12px; text-align: center; margin-top: 10px;">
+                <div style="font-size: 1.3rem; margin-bottom: 8px;">🍽️</div>
+                <div style="font-weight: 700; color: #E2E8F0; margin-bottom: 6px;">오늘자 3대 킬러 대본이 아직 캘린더에 서빙되지 않았습니다.</div>
+                <div style="font-size: 0.84rem; color: #94A3B8; margin-bottom: 14px;">매일 아침 09:00 자동 서빙되며, 필요한 경우 하단 긴급 수동 제어 센터에서 즉시 강제 서빙할 수 있습니다.</div>
             </div>
         """, unsafe_allow_html=True)
 
-    # 4단계 타임라인 인디케이터
-    st.markdown("""
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0 14px 0;">
-            <div style="background: #0F172A; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 10px; padding: 10px; text-align: center;">
-                <div style="font-size: 0.76rem; color: #38BDF8; font-weight: 800;">STEP 1 · 09:00</div>
-                <div style="font-size: 0.86rem; font-weight: 700; color: #FFFFFF; margin-top: 3px;">서빙 팝업 알림</div>
-                <div style="font-size: 0.72rem; color: #94A3B8; margin-top: 2px;">3대 킬러 대본 서빙</div>
-            </div>
-            <div style="background: #0F172A; border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 10px; padding: 10px; text-align: center;">
-                <div style="font-size: 0.76rem; color: #F59E0B; font-weight: 800;">STEP 2 · 15:00</div>
-                <div style="font-size: 0.86rem; font-weight: 700; color: #FFFFFF; margin-top: 3px;">리마인드 팝업</div>
-                <div style="font-size: 0.72rem; color: #94A3B8; margin-top: 2px;">16시 자동승인 예고</div>
-            </div>
-            <div style="background: #0F172A; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 10px; padding: 10px; text-align: center;">
-                <div style="font-size: 0.76rem; color: #EF4444; font-weight: 800;">STEP 3 · 16:00</div>
-                <div style="font-size: 0.86rem; font-weight: 700; color: #FFFFFF; margin-top: 3px;">타임아웃 자동승인</div>
-                <div style="font-size: 0.72rem; color: #94A3B8; margin-top: 2px;">적중률 1위 대본 채택</div>
-            </div>
-            <div style="background: #0F172A; border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; padding: 10px; text-align: center;">
-                <div style="font-size: 0.76rem; color: #10B981; font-weight: 800;">STEP 4 · 17:30</div>
-                <div style="font-size: 0.86rem; font-weight: 700; color: #FFFFFF; margin-top: 3px;">골든타임 자동발행</div>
-                <div style="font-size: 0.72rem; color: #94A3B8; margin-top: 2px;">유튜브 트래픽 피크</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    col_btn_auto, col_btn_queue = st.columns([1.5, 1.5], gap="medium")
-    with col_btn_auto:
-        btn_trigger_timeout = st.button("⚡ [시뮬레이션] 16:00 타임아웃 1위 대본 자동 승인 즉시 트리거", use_container_width=True)
-    with col_btn_queue:
-        golden_queue = get_golden_time_queue()
-        queue_count = len(golden_queue)
-        btn_view_queue = st.button(f"🌇 골든타임(17:30) 자동 예약 배포 대기열 ({queue_count}건)", use_container_width=True)
-
-    if btn_trigger_timeout:
-        cal_mgr = CalendarManager()
-        timeout_res = cal_mgr.check_and_trigger_timeout_auto_approval(force_now=True)
-        if timeout_res.get("triggered"):
-            ep_id = timeout_res['episode_id']
-            st.session_state["active_ep_id"] = ep_id
-            st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
-            st.balloons()
-            st.rerun()
-        else:
-            st.info(timeout_res.get("reason", "타임아웃 조건 미충족 또는 이미 승인 완료"))
-
-    if btn_view_queue:
-        if golden_queue:
-            with st.expander("🌇 퇴근길 골든타임(17:30~18:00) 예약 배포 대기열 현황", expanded=True):
-                for q in golden_queue:
-                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 적중률: **{q.get('predicted_hit_rate')}%** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}`")
-        else:
-            st.info("현재 골든타임 대기열에 등록된 영상이 없습니다.")
-
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --------------------------------------------------------------------------
-    # 3. 개별 오리지널 대본 단독 즉시 생성 (수동 모드)
-    # --------------------------------------------------------------------------
-    # --------------------------------------------------------------------------
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 6px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                <span>⚡</span> 개별 오리지널 대본 단독 즉시 생성 (수동 모드)
-            </div>
-            <div style="font-size: 0.86rem; color: #94A3B8; margin-bottom: 14px;">
-                특정 실시간 급상승 키워드를 기반으로 1편의 대본을 즉시 단독 생성하여 기획합니다.
-            </div>
-    """, unsafe_allow_html=True)
-
-    btn_step1 = st.button("✨ 신규 트렌드 감지 & 오리지널 대본 1편 생성", use_container_width=True)
-    if btn_step1:
-        with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중..."):
-            try:
-                new_script = run_pipeline_step1()
-                ep_id = new_script.episode_id
-                st.session_state["active_ep_id"] = ep_id
-                st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
-                st.rerun()
-            except Exception as e:
-                st.error(f"생성 실패: {e}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    # ==========================================================================
+    # 3. 중하단: 🧠 현재 채택(승인) 대본의 '감정 역공학 분석 브리핑'
+    # ==========================================================================
     if script is not None:
-        # 감정 역공학 분석 브리핑
         st.markdown(f"""
             <div class="stitch-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                     <div style="font-weight: 800; font-size: 1.15rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                        <span>🧠</span> 현재 에피소드 감정 역공학 분석 브리핑
+                        <span style="font-size: 1.35rem;">🧠</span> 현재 채택(승인) 대본의 '감정 역공학 분석 브리핑'
                     </div>
                     <div style="font-size: 0.8rem; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 4px 10px; color: #A5B4FC; font-weight: 700;">
-                        에피소드: {script.episode_id}
+                        선택된 에피소드: {script.episode_id}
                     </div>
                 </div>
         """, unsafe_allow_html=True)
@@ -1029,10 +1027,11 @@ with tab_step1:
             """, unsafe_allow_html=True)
 
         st.markdown(f"""
-            <div style="margin-top: 16px; padding: 12px 16px; background: #0F172A; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; color: #CBD5E1;">
-                🎯 타겟 감정: <strong style="color: #38BDF8;">{script.target_emotion}</strong> · 
+            <div style="margin-top: 16px; padding: 12px 16px; background: #0F172A; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; color: #CBD5E1; line-height: 1.7;">
+                🎯 타깃 감정: <strong style="color: #38BDF8;">{script.target_emotion}</strong> · 
                 ⏱️ 예상 길이: <strong style="color: #38BDF8;">{script.total_duration_sec}초</strong> · 
-                🏷️ {' '.join(script.hashtags)}
+                ⚡ 반전 결말: <strong style="color: #FBBF24;">{script.analysis.twist_point}</strong><br>
+                🏷️ 해시태그: {' '.join(script.hashtags)}
             </div>
             </div>
         """, unsafe_allow_html=True)
@@ -1044,7 +1043,98 @@ with tab_step1:
             </div>
         """, unsafe_allow_html=True)
     else:
-        st.info("💡 아직 생성된 대본이 없습니다. 상단의 **[✨ 신규 트렌드 감지 & 오리지널 대본 즉시 생성]** 버튼을 눌러 첫 번째 대본을 생성하세요.")
+        st.info("💡 검수할 대본이 없습니다. 위 구글 캘린더 '밥상 서빙'에서 대본을 [📱 즉시 채택]하거나 하단 긴급 수동 제어 센터에서 신규 대본을 생성하세요.")
+
+    # ==========================================================================
+    # 4. 최하단 (Expander 접이식): 🛠️ 비상용 수동 제어 센터 (Manual Controls)
+    # ==========================================================================
+    with st.expander("🛠️ 긴급 수동 제어 및 시뮬레이션", expanded=False):
+        st.markdown("""
+            <div style="font-size: 0.86rem; color: #94A3B8; margin-bottom: 16px; line-height: 1.6;">
+                평상시에는 스케줄러가 완전 무인 자율주행하므로 조작할 필요가 없습니다. 스케줄러 점검, 특정 일자 강제 서빙, 단독 1편 긴급 생성 또는 16:00 타임아웃 로직을 즉시 검증할 때만 사용하는 <strong>비상 개입 콘솔</strong>입니다.
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<div style='font-weight: 800; color: #FFFFFF; font-size: 0.95rem; margin-bottom: 8px;'>🍽️ 오늘자 3대 킬러 대본 강제 큐레이션 서빙</div>", unsafe_allow_html=True)
+        col_cfg1, col_cfg2 = st.columns([1.0, 1.8], gap="medium")
+        with col_cfg1:
+            buffet_date = st.date_input("📅 서빙 기준 일자", value=date.today(), key="buffet_serving_date_emergency")
+        with col_cfg2:
+            default_user_email = os.getenv("CALENDAR_USER_EMAIL", os.getenv("GOOGLE_CALENDAR_ID", "user@gmail.com"))
+            target_attendee = st.text_input(
+                "📧 초대받을 구글 캘린더 계정 이메일",
+                value=default_user_email if "@" in default_user_email else "",
+                placeholder="your-google-account@gmail.com",
+                key="buffet_attendee_email_emergency",
+                help="스마트폰 구글 캘린더 앱에 로그인된 이메일 계정으로 참석 초대장을 발송합니다."
+            )
+
+        btn_curate_serve = st.button("🍽️ 오늘자 3대 킬러 대본 강제 큐레이션 서빙", type="primary", use_container_width=True)
+        if btn_curate_serve:
+            bar_curate = st.progress(0.0)
+            status_curate = st.empty()
+
+            def on_curate_progress(msg: str, frac: float):
+                bar_curate.progress(min(max(frac, 0.0), 1.0))
+                status_curate.caption(msg)
+
+            try:
+                with st.spinner("실시간 트렌드 분석 → 3대 사이다 썰 큐레이션 → 구글 캘린더 초대장 발송 중..."):
+                    candidates = run_curation_batch(count=3, progress_callback=on_curate_progress)
+                    cal_mgr = CalendarManager()
+                    serving_res = cal_mgr.serve_candidate_buffet(
+                        candidates=candidates,
+                        target_date=buffet_date,
+                        attendee_email=target_attendee
+                    )
+                    st.session_state["flash"] = f"🎉 3대 킬러 대본 큐레이션 완료! 구글 캘린더에 RSVP 초대([예])가 발송되었습니다."
+                    st.rerun()
+            except Exception as e:
+                st.error(f"큐레이션 서빙 실패: {e}")
+
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+        col_ctrl_a, col_ctrl_b = st.columns(2, gap="medium")
+        with col_ctrl_a:
+            st.markdown("<div style='font-weight: 800; color: #FFFFFF; font-size: 0.95rem; margin-bottom: 8px;'>✨ 개별 오리지널 대본 1편 즉시 생성</div>", unsafe_allow_html=True)
+            btn_step1 = st.button("✨ 신규 트렌드 감지 & 오리지널 대본 1편 생성", use_container_width=True)
+            if btn_step1:
+                with st.spinner("트렌드 감지 → 열광 포인트 역공학 → 대본 생성 중..."):
+                    try:
+                        new_script = run_pipeline_step1()
+                        ep_id = new_script.episode_id
+                        st.session_state["active_ep_id"] = ep_id
+                        st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"생성 실패: {e}")
+
+        with col_ctrl_b:
+            st.markdown("<div style='font-weight: 800; color: #FFFFFF; font-size: 0.95rem; margin-bottom: 8px;'>⚡ 16:00 타임아웃 1위 자동승인 시뮬레이션</div>", unsafe_allow_html=True)
+            btn_trigger_timeout = st.button("⚡ [시뮬레이션] 16:00 타임아웃 1위 대본 자동 승인 즉시 트리거", use_container_width=True)
+            if btn_trigger_timeout:
+                cal_mgr = CalendarManager()
+                timeout_res = cal_mgr.check_and_trigger_timeout_auto_approval(force_now=True)
+                if timeout_res.get("triggered"):
+                    ep_id = timeout_res['episode_id']
+                    st.session_state["active_ep_id"] = ep_id
+                    st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.info(timeout_res.get("reason", "타임아웃 조건 미충족 또는 이미 승인 완료"))
+
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+        golden_queue = get_golden_time_queue()
+        queue_count = len(golden_queue)
+        btn_view_queue = st.button(f"🌇 골든타임(17:30) 자동 예약 배포 대기열 ({queue_count}건)", use_container_width=True)
+        if btn_view_queue:
+            if golden_queue:
+                st.markdown("##### 🌇 퇴근길 골든타임(17:30~18:00) 예약 배포 대기열 현황")
+                for q in golden_queue:
+                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 적중률: **{q.get('predicted_hit_rate')}%** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}`")
+            else:
+                st.info("현재 골든타임 대기열에 등록된 영상이 없습니다.")
 
 
 # ------------------------------------------------------------------------------
