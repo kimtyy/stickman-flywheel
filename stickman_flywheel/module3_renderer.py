@@ -1856,21 +1856,21 @@ def make_overlay(title: str, idx: int, total: int, subtitle: str, action: str) -
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
 
-    # 1. 상단 타이틀 배너 (씬 번호 배지 완전 삭제, 타이틀 텍스트가 박스 중앙에 여유 있게 배치)
-    banner_y0, banner_y1 = 36, 196
-    d.rounded_rectangle((40, banner_y0, W - 40, banner_y1), radius=36, fill=(18, 18, 28, 235),
-                        outline=(255, 214, 10, 255), width=6)
+    # 1. 상단 타이틀 배너 (컴팩트 & 하이엔드: 30 ~ 175px 높이로 최적화하여 하단 말풍선 공간 넉넉히 확보)
+    banner_y0, banner_y1 = 30, 175
+    d.rounded_rectangle((40, banner_y0, W - 40, banner_y1), radius=30, fill=(18, 18, 28, 235),
+                        outline=(255, 214, 10, 255), width=5)
 
     # 제목 텍스트 (박스 중앙에 여유 있게 최대 880px 폭으로 배치)
-    size, lines = 56, []
-    while size >= 36:
+    size, lines = 50, []
+    while size >= 34:
         font = get_font(size)
         lines = wrap_text(title, font, 880)
         if len(lines) <= 2:
             break
         size -= 4
     lines = lines[:2]
-    ly = 116 - (len(lines) - 1) * size * 0.58
+    ly = 102 - (len(lines) - 1) * size * 0.58
     for ln in lines:
         d.text((W / 2, ly), ln, font=get_font(size), fill=(255, 214, 10), anchor="mm")
         ly += size * 1.16
@@ -2100,15 +2100,20 @@ def split_long_narration(text: str) -> List[str]:
 def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
                 head_a: Optional[Tuple[float, float]] = None,
                 head_b: Optional[Tuple[float, float]] = None,
-                target: Optional[Tuple[float, float]] = None) -> None:
+                target: Optional[Tuple[float, float]] = None,
+                y_offset: int = 0) -> int:
+    """
+    화자별 말풍선 렌더링 (좌/우 화자 분리, 꼬리표 방향 대칭, Y축 충돌 방지).
+    반환값: 렌더링된 말풍선 박스 하단 Y 좌표(y1).
+    """
     raw_text = (text or "").strip()
     if not raw_text:
-        return
+        return y_offset
 
     spk_raw = (speaker or "").strip()
     spk_u = spk_raw.upper()
 
-    # 화자 유형 분류 (A, B, 해설)
+    # 화자 유형 분류 (A: 주인공, B: 빌런, 해설)
     is_narration = not spk_raw or spk_raw in ("해설", "내레이션", "전체", "상황")
     is_a = not is_narration and (spk_u in ("A", "주인공", "남자") or ("A" in spk_u and "B" not in spk_u))
     is_b = not is_narration and (spk_u in ("B", "빌런", "상대", "여자") or ("B" in spk_u and "A" not in spk_u))
@@ -2120,87 +2125,94 @@ def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
         else:
             head_a = target
 
-    # 1. 폰트 크기 및 줄바꿈
-    max_wrap_w = 800 if is_narration else 680
-    chosen_size = 46
-    chosen_lines: List[str] = []
-    chosen_font = None
+    # 1. 폰트 크기 및 최대 줄바꿈 폭
+    if is_narration:
+        max_wrap_w = 760
+        chosen_size = 40
+    else:
+        # 좌/우 분리 배치를 위한 폭 (최대 420px)
+        max_wrap_w = 420
+        chosen_size = 42
 
-    for sz in (48, 44, 40, 36):
-        fnt = get_font(sz)
-        lines = wrap_text(raw_text, fnt, max_wrap_w)
-        chosen_size = sz
-        chosen_font = fnt
-        chosen_lines = lines
-        if len(lines) <= 2:
-            break
+    font = get_font(chosen_size)
+    lines = wrap_text(raw_text, font, max_wrap_w)
+    if len(lines) > 3:
+        lines = lines[:3]
+        lines[-1] = lines[-1][:-1] + "…"
 
-    if len(chosen_lines) > 3:
-        chosen_lines = chosen_lines[:3]
-        chosen_lines[-1] = chosen_lines[-1][:-1] + "…"
+    line_h = int(chosen_size * 1.32)
+    max_text_w = max(font.getlength(ln) for ln in lines) if lines else 200
 
-    font = chosen_font
-    line_h = int(chosen_size * 1.34)
-    max_text_w = max(font.getlength(ln) for ln in chosen_lines)
+    # 2. 박스 크기 및 패딩 계산
+    pad_v = 18 if is_narration else 20
+    pad_h = 32 if is_narration else 28
+    bh = pad_v * 2 + len(lines) * line_h
+    bw = min(880 if is_narration else 480, max(int(max_text_w + pad_h * 2), 340))
 
-    # 2. 박스 크기 및 균형 잡힌 상하좌우 패딩 (미니 배지 제거로 상하 대칭 패딩 26px 적용)
-    pad_v = 28
-    pad_h = 44
-    bh = pad_v * 2 + len(chosen_lines) * line_h
-    bw = min(960 if is_narration else 840, max(int(max_text_w + pad_h * 2), 400))
-
-    y0 = 224
+    # 3. Y축 위치 및 상하 간격 (충돌 방지 오프셋 적용)
+    if y_offset > 0:
+        y0 = y_offset + 14  # 상단 해설 바로 아래로 14px 간격 배치
+    else:
+        y0 = 192 if is_narration else 198
     y1 = y0 + bh
 
+    # 4. X축 좌표 및 테두리/꼬리표 스타일 (좌우 대칭 분리)
     if is_a:
-        # 좌측 상단 (화자 A 머리 위로 치우치게 배치)
-        x0 = 60
+        # [좌측 캐릭터: 주인공] 중심 X: 275 (250~300 사이), 블루(#3B82F6), 좌측 하단 꼬리표
+        center_x = 275
+        x0 = max(35, center_x - bw // 2)
         x1 = x0 + bw
-        target_head = head_a or (360, 680)
-        border_color = (25, 75, 210)  # Royal Blue
-        border_width = 7
+        target_head = head_a or (360, 780)
+        border_color = (59, 130, 246)  # Blue #3B82F6
+        border_width = 6
         box_fill = (255, 255, 255)
     elif is_b:
-        # 우측 상단 (화자 B 머리 위로 치우치게 배치)
-        x1 = W - 60
+        # [우측 캐릭터: 빌런] 중심 X: 640 (600~650 사이), 레드(#EF4444), 우측 하단 꼬리표
+        center_x = 640
+        x0 = center_x - bw // 2
+        x1 = min(W - 35, x0 + bw)
         x0 = x1 - bw
-        target_head = head_b or (720, 680)
-        border_color = (220, 35, 35)  # Crimson Red
-        border_width = 7
+        target_head = head_b or (720, 780)
+        border_color = (239, 68, 68)  # Red #EF4444
+        border_width = 6
         box_fill = (255, 255, 255)
     else:
-        # 해설: 꼬리 없는 상단 중앙 와이드 자막 박스, 웜 아이보리/연노랑(#FFFBEB) 배경 + 굵은 골드 테두리
+        # [해설] 화면 중앙 배치, 웜 아이보리(#FFFBEB), 앰버 골드(#F59E0B) 테두리, 꼬리 없음
         x0 = int(W / 2 - bw / 2)
         x1 = x0 + bw
         target_head = None
-        border_color = (245, 150, 15)  # Amber Gold
-        border_width = 8
-        box_fill = (255, 251, 235)  # Warm Ivory (#FFFBEB)
+        border_color = (245, 158, 11)  # Amber Gold #F59E0B
+        border_width = 5
+        box_fill = (255, 251, 235)
 
-    # 3. 말풍선 꼬리 그리기 (화자 A 또는 B일 때만 동적 꼬리 생성, 해설은 꼬리 없음)
-    if target_head is not None and target_head[1] > y1 + 15:
-        tx = min(max(target_head[0], x0 + 70), x1 - 70)
-        ty = min(target_head[1], y1 + 220)  # 꼬리 길이 상한 220px 제한
-        d.polygon([(tx - 32, y1 - 4), (tx + 32, y1 - 4), (tx, ty)], fill=box_fill, outline=border_color)
+    # 5. 말풍선 꼬리 그리기 (좌/우 캐릭터 머리를 향하도록 설정)
+    if target_head is not None and target_head[1] > y1 + 10:
+        if is_a:
+            tx_base = min(max(head_a[0] - 30, x0 + 45), x1 - 45)
+            target_pt = (head_a[0] - 15, min(head_a[1] - 40, y1 + 190))
+        else:
+            tx_base = min(max(head_b[0] - 10, x0 + 45), x1 - 45)
+            target_pt = (head_b[0] + 15, min(head_b[1] - 40, y1 + 190))
+        d.polygon([(tx_base - 22, y1 - 2), (tx_base + 22, y1 - 2), target_pt], fill=box_fill, outline=border_color)
 
-    # 4. 말풍선 본체 (부드러운 라운디드 사각형)
-    d.rounded_rectangle((x0, y0, x1, y1), radius=32, fill=box_fill, outline=border_color, width=border_width)
+    # 6. 말풍선 본체 라운디드 사각형
+    d.rounded_rectangle((x0, y0, x1, y1), radius=24, fill=box_fill, outline=border_color, width=border_width)
 
     # 꼬리 연결부 매꿈
-    if target_head is not None and target_head[1] > y1 + 15:
-        d.rectangle((tx - 26, y1 - 6, tx + 26, y1 + 2), fill=box_fill)
+    if target_head is not None and target_head[1] > y1 + 10:
+        d.rectangle((tx_base - 18, y1 - 5, tx_base + 18, y1 + 2), fill=box_fill)
 
-    # 5. 본문 텍스트 렌더링 (상하 정중앙 수직 밸런스 및 가독성 최적화)
-    text_color = (20, 20, 30) if is_narration else (15, 15, 25)
-    for i, ln in enumerate(chosen_lines):
+    # 7. 텍스트 렌더링
+    text_color = (25, 25, 35)
+    for i, ln in enumerate(lines):
         ly = y0 + pad_v + i * line_h
         if is_narration:
-            # 해설은 박스 정중앙 정렬
             d.text((W / 2, ly), ln, font=font, fill=text_color, anchor="mt")
         else:
-            # 대사는 좌우 패딩을 고르게 맞춘 깔끔한 좌측 정렬
-            line_start_x = x0 + int((bw - max_text_w) / 2)
+            line_start_x = x0 + int((bw - font.getlength(ln)) / 2)
             d.text((line_start_x, ly), ln, font=font, fill=text_color)
+
+    return y1
 
 
 
@@ -2222,8 +2234,8 @@ class SceneVisuals:
         self.bg = make_background(bg_color, pose, self.scene_text, setting_type=self.episode_setting,
                                   scene_idx=idx, total_scenes=total, visual_props=self.visual_props)
         overlay = make_overlay(title, idx, total, scene.subtitle_text, scene.stickman_action)
-        # 상단 오버레이는 타이틀 바 높이(204px)까지만 크롭하여 말풍선과 절대 겹치지 않도록 보장
-        self.top = overlay.crop((0, 0, W, 204))
+        # 상단 오버레이는 타이틀 바 높이(182px)까지만 크롭하여 말풍선과 절대 겹치지 않도록 보장
+        self.top = overlay.crop((0, 0, W, 182))
         self.bottom = overlay.crop((0, 1480, W, H))
         self.bubble_text = scene.tts_narration
 
@@ -2244,23 +2256,21 @@ class SceneVisuals:
         self.foe_x = FOE_X
         self.main_pose, self.foe_pose = self._determine_poses(pose, scene.stickman_action, scene.tts_narration, idx, total)
 
-    def get_active_segment(self, t: float) -> Optional[Dict]:
+    def get_active_segments(self, t: float) -> List[Dict]:
+        """현재 시간(t)에 실제로 음성이 발화 중인 세그먼트 목록 반환 (발화 전/후에는 자동 퇴장)."""
         if not self.timeline:
-            return None
-        if t < self.timeline[0]["start"]:
-            return self.timeline[0]
-        if t >= self.timeline[-1]["end"]:
-            return self.timeline[-1]
-        for k in range(len(self.timeline)):
-            seg = self.timeline[k]
-            if seg["start"] <= t <= seg["end"]:
-                return seg
-            if k + 1 < len(self.timeline):
-                next_seg = self.timeline[k + 1]
-                if seg["end"] < t < next_seg["start"]:
-                    mid = (seg["end"] + next_seg["start"]) / 2.0
-                    return seg if t < mid else next_seg
-        return self.timeline[-1]
+            return []
+        active = []
+        for seg in self.timeline:
+            # 발화 음성 구간 동안만 노출 (자연스러운 입출력을 위한 미세 여운 -0.05s ~ +0.10s 허용)
+            if (seg["start"] - 0.05) <= t <= (seg["end"] + 0.10):
+                active.append(seg)
+        return active
+
+    def get_active_segment(self, t: float) -> Optional[Dict]:
+        """주 발화 세그먼트 반환 (발화 중이 아닐 때는 None 반환)."""
+        segs = self.get_active_segments(t)
+        return segs[0] if segs else None
 
     @staticmethod
     def _determine_poses(pose: str, action: str, narration: str, idx: int, total: int) -> Tuple[str, str]:
@@ -2531,10 +2541,22 @@ class SceneVisuals:
         head_b_screen = ((foe_fig["head"][0] - cam_x0) * cam_z,
                          (foe_fig["head"][1] - cam_y0) * cam_z - (foe_fig["R"] * cam_z) - 10)
 
-        # 현재 시간(t)에 발화 중인 화자별 대사/해설 말풍선 실시간 렌더링
-        if active_seg:
-            draw_bubble(d_ui, active_seg.get("speaker", ""), active_seg.get("text", ""),
-                        head_a=head_a_screen, head_b=head_b_screen)
+        # 현재 시간(t)에 발화 중인 화자별 대사/해설 말풍선 실시간 렌더링 (Y축 충돌 방지 및 타이밍 싱크)
+        active_segs = self.get_active_segments(t)
+        if active_segs:
+            # 해설 우선 배치 후, 캐릭터 대사 말풍선이 겹칠 경우 Y축 오프셋을 주어 충돌 방지
+            narr_segs = [s for s in active_segs if not s.get("speaker") or s.get("speaker") in ("해설", "내레이션", "전체", "상황")]
+            char_segs = [s for s in active_segs if s not in narr_segs]
+
+            cur_y_offset = 0
+            for n_seg in narr_segs:
+                y_bot = draw_bubble(d_ui, n_seg.get("speaker", ""), n_seg.get("text", ""),
+                                    head_a=head_a_screen, head_b=head_b_screen, y_offset=cur_y_offset)
+                cur_y_offset = max(cur_y_offset, y_bot)
+
+            for c_seg in char_segs:
+                draw_bubble(d_ui, c_seg.get("speaker", ""), c_seg.get("text", ""),
+                            head_a=head_a_screen, head_b=head_b_screen, y_offset=cur_y_offset)
 
         # 상단 타이틀 배너 / 하단 자막 오버레이
         img.paste(self.top, (0, 0), self.top)
@@ -2961,7 +2983,7 @@ class StickmanShortRenderer:
         combined = array("h")
         timeline: List[Dict] = []
 
-        lead_offset = 0.25  # _build_scene_audio 에서 lead = 0.25s 뒤에 tts 배치
+        lead_offset = 0.08  # _build_scene_audio 의 lead = 0.08s 와 100% 일치시켜 완벽 싱크 보장
         cur_t = lead_offset
 
         for i, (speaker, content, pcm) in enumerate(seg_data):
