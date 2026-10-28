@@ -106,8 +106,27 @@ section[data-testid="stSidebar"] .block-container {
 }
 
 /* ==========================================================================
-   2. 작업 흐름 기반 4단계 탭 (Tabs) 하이엔드 네온 스타일링
+   2. 작업 흐름 기반 5단계 세션 탭 (Tabs) 하이엔드 네온 스타일링
    ========================================================================== */
+.studio-tab-bar {
+    background: rgba(15, 23, 42, 0.9) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 8px 10px 4px 10px !important;
+    margin-bottom: 22px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+div[data-testid="stColumn"] div.stButton > button[key^="nav_tab_btn_"] {
+    min-height: 48px !important;
+    font-size: 0.94rem !important;
+    font-weight: 750 !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    white-space: nowrap !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
 div[data-baseweb="tab-list"] {
     background: rgba(15, 23, 42, 0.9) !important;
     border: 1.5px solid rgba(255, 255, 255, 0.1) !important;
@@ -729,21 +748,63 @@ video_specs = get_video_specs(video_file)
 
 
 # ==============================================================================
-# 5. 작업 흐름 기반 5단계 탭 (Tab) 구조 적용 (상용화 B2B 분석 포함)
+# 5. 작업 흐름 기반 5단계 탭 (세션 상태 100% 보존 & Single Workflow 바인딩)
 # ==============================================================================
-tab_step1, tab_step2, tab_step3, tab_step4, tab_step5 = st.tabs([
+NAV_TABS = [
     "🚀 Step 1: 기획 & 대본",
     "✍️ Step 2: 대본 검수",
     "🎵 Step 3: 오디오 연출",
     "🎬 Step 4: 렌더링 & 배포",
     "📊 Step 5: 성과 분석 & 피드백",
-])
+]
+
+if "active_nav_tab" not in st.session_state or st.session_state["active_nav_tab"] not in NAV_TABS:
+    st.session_state["active_nav_tab"] = NAV_TABS[0]
+
+# BGM 및 오디오 설정 기본값 및 세션 동기화 (Step 3 & Step 4 공통 바인딩)
+bgm_tracks = list_bgm_tracks(BGM_DIR)
+bgm_options = ["BGM 없음"]
+mp3_stems = set()
+for t in bgm_tracks:
+    if t["ext"] == ".MP3":
+        mp3_stems.add(t["stem"])
+        bgm_options.append(t["name"])
+for t in bgm_tracks:
+    if t["ext"] == ".WAV" and t["stem"] not in mp3_stems:
+        bgm_options.append(t["name"])
+
+preferred_bgm = "Neon Skyline_5-2.wav"
+default_bgm_idx = bgm_options.index(preferred_bgm) if preferred_bgm in bgm_options else 0
+default_bgm = bgm_options[default_bgm_idx] if bgm_options else "BGM 없음"
+
+selected_bgm = st.session_state.get(f"{key}_bgm_track", default_bgm)
+bgm_vol_pct = st.session_state.get(f"{key}_bgm_vol", 20)
+bgm_vocal_filter = st.session_state.get(f"{key}_bgm_vocal_filter", True)
+
+# 상단 5단계 네비게이션 탭 바 렌더링 (재실행 후에도 100% 보존)
+st.markdown('<div class="studio-tab-bar">', unsafe_allow_html=True)
+nav_cols = st.columns(len(NAV_TABS), gap="small")
+for idx, tab_label in enumerate(NAV_TABS):
+    is_active = (st.session_state["active_nav_tab"] == tab_label)
+    with nav_cols[idx]:
+        if st.button(
+            tab_label,
+            key=f"nav_tab_btn_{idx}",
+            type="primary" if is_active else "secondary",
+            use_container_width=True
+        ):
+            if not is_active:
+                st.session_state["active_nav_tab"] = tab_label
+                st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+active_nav = st.session_state["active_nav_tab"]
 
 
 # ------------------------------------------------------------------------------
 # [Step 1: 기획 & 대본] (무인 자율주행 관제탑: 4단계 레이아웃)
 # ------------------------------------------------------------------------------
-with tab_step1:
+if active_nav == "🚀 Step 1: 기획 & 대본":
     now_dt = datetime.now()
     now_time_str = now_dt.strftime("%H:%M")
     cur_h_float = now_dt.hour + (now_dt.minute / 60.0)
@@ -1057,6 +1118,9 @@ with tab_step1:
                 <div>기획 및 분석 확인이 완료되면 상단 <strong>[✍️ Step 2: 대본 검수]</strong> 탭으로 이동하여 씬별 대사와 연출을 확인하세요.</div>
             </div>
         """, unsafe_allow_html=True)
+        if st.button("✍️ [Step 2: 대본 검수] 탭으로 즉시 이동", key="btn_goto_step2", use_container_width=True):
+            st.session_state["active_nav_tab"] = "✍️ Step 2: 대본 검수"
+            st.rerun()
     else:
         st.info("💡 검수할 대본이 없습니다. 위 구글 캘린더 '밥상 서빙'에서 대본을 [📱 즉시 채택]하거나 하단 긴급 수동 제어 센터에서 신규 대본을 생성하세요.")
 
@@ -1159,7 +1223,7 @@ with tab_step1:
 # ------------------------------------------------------------------------------
 # [Step 2: 대본 검수] (에피소드 선택, 씬별 대사/연출 아코디언 에디터, 승인/폐기)
 # ------------------------------------------------------------------------------
-with tab_step2:
+elif active_nav == "✍️ Step 2: 대본 검수":
     if script is None:
         st.info("💡 검수할 대본이 없습니다. [Step 1: 기획 & 대본] 탭에서 신규 대본을 먼저 생성하세요.")
     else:
@@ -1268,12 +1332,15 @@ with tab_step2:
                 <div>대본 검수가 완료되었다면 상단 <strong>[🎵 Step 3: 오디오 연출]</strong> 탭으로 이동하여 BGM 및 성우 믹싱을 설정하세요.</div>
             </div>
         """, unsafe_allow_html=True)
+        if st.button("🎵 [Step 3: 오디오 연출] 탭으로 즉시 이동", key="btn_goto_step3", use_container_width=True):
+            st.session_state["active_nav_tab"] = "🎵 Step 3: 오디오 연출"
+            st.rerun()
 
 
 # ------------------------------------------------------------------------------
 # [Step 3: 오디오 연출] (BGM 선택, 오디오 더킹 슬라이더 20%, 보컬 필터)
 # ------------------------------------------------------------------------------
-with tab_step3:
+elif active_nav == "🎵 Step 3: 오디오 연출":
     st.markdown("""
         <div class="stitch-card">
             <div style="font-weight: 800; font-size: 1.15rem; margin-bottom: 8px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
@@ -1359,12 +1426,15 @@ with tab_step3:
             <div>오디오 연출 설정이 완료되면 상단 <strong>[🎬 Step 4: 렌더링 & 배포]</strong> 탭으로 이동하여 최종 영상을 확인하세요.</div>
         </div>
     """, unsafe_allow_html=True)
+    if st.button("🎬 [Step 4: 렌더링 & 배포] 탭으로 즉시 이동", key="btn_goto_step4", use_container_width=True):
+        st.session_state["active_nav_tab"] = "🎬 Step 4: 렌더링 & 배포"
+        st.rerun()
 
 
 # ------------------------------------------------------------------------------
 # [Step 4: 렌더링 & 배포] (MP4 렌더링 버튼, 모바일 프리뷰, 다운로드, 유튜브 업로드)
 # ------------------------------------------------------------------------------
-with tab_step4:
+elif active_nav == "🎬 Step 4: 렌더링 & 배포":
     if script is None:
         st.info("💡 렌더링할 대본이 없습니다. [Step 1: 기획 & 대본] 탭에서 신규 대본을 먼저 생성하세요.")
     else:
@@ -1416,6 +1486,7 @@ with tab_step4:
                     )
                     st.session_state[f"video_reload_{script.episode_id}"] = time.time()
                     st.session_state["flash"] = f"🎉 렌더링 완료: {Path(rendered_out).name}"
+                    st.session_state["active_nav_tab"] = "🎬 Step 4: 렌더링 & 배포"
                     st.rerun()
                 except Exception as e:
                     st.error(f"렌더링 실패: {e}")
@@ -1557,7 +1628,7 @@ with tab_step4:
 # ------------------------------------------------------------------------------
 # [Step 5: 성과 분석 & AI 자율 피드백] (YouTube Analytics 3계층 피드백 루프 & B2B SaaS 리포트)
 # ------------------------------------------------------------------------------
-with tab_step5:
+elif active_nav == "📊 Step 5: 성과 분석 & 피드백":
     analytics = AnalyticsEngine()
     three_tier = analytics.get_three_tier_metrics()
     daily = three_tier["daily"]
