@@ -143,14 +143,17 @@ def find_ffmpeg() -> str:
 # 1. SFX 합성
 # =====================================================================
 SFX_ALIASES: List[Tuple[str, List[str]]] = [
-    ("punch_hit", ["punch", "hit", "slap", "smack", "impact", "펀치", "타격", "퍽", "때리"]),
+    ("punch_hit", ["punch", "hit", "slap", "smack", "impact", "punch_impact", "펀치", "타격", "퍽", "때리"]),
     ("whoosh", ["whoosh", "swish", "swoosh", "zoom", "wind", "휙", "줌"]),
     ("shock_beep", ["shock", "beep", "alert", "alarm", "gasp", "충격", "경고", "삑"]),
     ("cartoon_slip", ["slip", "slide", "skid", "미끄", "슬립"]),
     ("boing", ["boing", "bounce", "spring", "jump", "보잉"]),
     ("ding", ["ding", "bell", "chime", "ring", "딩"]),
-    ("thud", ["thud", "fall", "crash", "bang", "drop", "쿵", "쾅", "넘어"]),
+    ("thud", ["thud", "fall", "crash", "bang", "drop", "쿵", "넘어"]),
     ("pop", ["pop", "click", "bubble", "팝"]),
+    ("cricket_chirp", ["cricket", "chirp", "귀뚜라미", "정적", "침묵"]),
+    ("record_scratch", ["scratch", "record", "스크래치", "멈칫"]),
+    ("dramatic_thud", ["dramatic", "쾅", "쿠웅", "쿵쾅"]),
 ]
 
 
@@ -172,6 +175,8 @@ class SfxSynth:
             "punch_hit": self._punch_hit, "whoosh": self._whoosh,
             "shock_beep": self._shock_beep, "cartoon_slip": self._cartoon_slip,
             "boing": self._boing, "ding": self._ding, "thud": self._thud, "pop": self._pop,
+            "cricket_chirp": self._cricket_chirp, "record_scratch": self._record_scratch,
+            "dramatic_thud": self._dramatic_thud,
         }
 
     def ensure_all(self) -> None:
@@ -285,6 +290,55 @@ class SfxSynth:
             t = i / SR
             ph += 2 * math.pi * (200 + 900 * math.exp(-t * 20)) / SR
             out.append(math.sin(ph) * math.exp(-t * 30))
+        return out
+
+    @staticmethod
+    def _cricket_chirp() -> List[float]:
+        """어이없는 침묵 및 무음 리액션 연출용 풀벌레/귀뚜라미 울음소리 (고주파 버스트)"""
+        out: List[float] = []
+        freq = 4600.0
+        for _ in range(2):
+            for _ in range(3):
+                dur = 0.045
+                n = int(dur * SR)
+                for i in range(n):
+                    t = i / SR
+                    env = math.sin(math.pi * (i / n))
+                    mod = 1.0 + 0.3 * math.sin(2 * math.pi * 120 * t)
+                    out.append(env * math.sin(2 * math.pi * freq * t) * mod * 0.7)
+                out.extend([0.0] * int(0.035 * SR))
+            out.extend([0.0] * int(0.18 * SR))
+        return out
+
+    @staticmethod
+    def _record_scratch() -> List[float]:
+        """분위기 급랭 시 사용되는 LP 턴테이블 레코드 스크래치 정적 사운드"""
+        rnd = random.Random(42)
+        out: List[float] = []
+        n = int(0.38 * SR)
+        ph = 0.0
+        for i in range(n):
+            t = i / SR
+            f = 1400 * math.exp(-t * 6) + 300 * math.sin(2 * math.pi * 12 * t)
+            ph += 2 * math.pi * f / SR
+            noise = (rnd.random() * 2 - 1) * 0.4
+            env = min(1.0, t / 0.02) * math.exp(-t * 4.5)
+            out.append((math.sin(ph) * 0.6 + noise) * env)
+        return out
+
+    @staticmethod
+    def _dramatic_thud() -> List[float]:
+        """결정타 참교육 및 팩폭 임팩트 시 초저음 시네마틱 붐 충격음"""
+        rnd = random.Random(7)
+        out, ph = [], 0.0
+        n = int(0.85 * SR)
+        for i in range(n):
+            t = i / SR
+            f = 60 * math.exp(-t * 4.0) + 25
+            ph += 2 * math.pi * f / SR
+            noise = (rnd.random() * 2 - 1) * math.exp(-t * 25) * 0.6
+            env = math.exp(-t * 3.5)
+            out.append((math.sin(ph) * 0.85 + noise) * env)
         return out
 
 
@@ -733,15 +787,22 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
     sx, sy = shoulder_pt
     hip_x, hip_y = hip_pt
     if char_type == "A":
-        # 주인공 A: 머슬 짐웨어 나시 조끼 (Royal Blue)
-        tank_pts = [
-            (sx - 48, sy - 2), (sx + 48, sy - 2),
-            (hip_x + 28, hip_y + 4), (hip_x - 28, hip_y + 4)
+        # 주인공 빼딱맨: 3D 스타일 다크 차콜 후디 (Dark Charcoal Hoodie)
+        hoodie_pts = [
+            (sx - 52, sy - 4), (sx + 52, sy - 4),
+            (hip_x + 34, hip_y + 4), (hip_x - 34, hip_y + 4)
         ]
-        d.polygon(tank_pts, fill=(28, 80, 195), outline=limb_color)
-        d.line([(sx - 48, sy - 2), (hip_x - 28, hip_y + 4)], fill=limb_color, width=4)
-        d.line([(sx + 48, sy - 2), (hip_x + 28, hip_y + 4)], fill=limb_color, width=4)
-        d.ellipse((sx - 24, sy - 14, sx + 24, sy + 18), fill=head_fill, outline=limb_color, width=3)
+        d.polygon(hoodie_pts, fill=(40, 44, 52), outline=limb_color)
+        # 캥거루 앞주머니 (Kangaroo pocket)
+        d.polygon([
+            (hip_x - 24, hip_y - 28), (hip_x + 24, hip_y - 28),
+            (hip_x + 30, hip_y + 2), (hip_x - 30, hip_y + 2)
+        ], fill=(30, 34, 40), outline=limb_color)
+        # 후드 끈 (Hoodie drawstrings)
+        d.line([(sx - 8, sy + 6), (sx - 8, sy + 26)], fill=(210, 215, 225), width=3)
+        d.line([(sx + 8, sy + 6), (sx + 8, sy + 26)], fill=(210, 215, 225), width=3)
+        # 후드 깃/카울 (Hood cowl)
+        d.ellipse((sx - 32, sy - 14, sx + 32, sy + 14), fill=(32, 35, 42), outline=limb_color, width=3)
     else:
         # 빌런 B: 얄미운 네온 오렌지 포인트 상의
         tank_pts = [
@@ -791,17 +852,8 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
     # 캐릭터별 헤어 / 액세서리 파츠 드로잉
     fp = fig["face"]
     if char_type == "A":
-        # 주인공 A: 이마 스포츠 헤어밴드 (Red) + 단정한 짧은 앞머리
-        hb_poly = [
-            fp(-0.84, -0.44), fp(0.84, -0.44),
-            fp(0.84, -0.16), fp(-0.84, -0.16)
-        ]
-        d.polygon(hb_poly, fill=(225, 45, 45), outline=outline_color)
-        # 헤어밴드 화이트 스트라이프 라인
-        d.line([fp(-0.80, -0.30), fp(0.80, -0.30)], fill=(255, 255, 255), width=4)
-        # 짧은 앞머리 팁
-        for bx in (-0.3, 0.05, 0.4):
-            d.polygon([fp(bx - 0.1, -0.44), fp(bx, -0.64), fp(bx + 0.1, -0.44)], fill=outline_color)
+        # 주인공 빼딱맨: 머리 뒤 후드 실루엣 (Dark Charcoal Hood back)
+        d.arc((cx - R - 6, cy - R - 6, cx + R + 6, cy + R + 12), start=140, end=400, fill=(35, 38, 46), width=12)
     else:
         # 빌런 B: 얄미운 노란색/주황색 삐죽머리 파츠 (머리 위로 솟은 스파이크 헤어)
         spikes = [
@@ -845,9 +897,7 @@ def _draw_face(d: ImageDraw.ImageDraw, fp, R: float, p: Dict, char_type: str = "
         d.line([fp(0.50, -0.20), fp(0.64, -0.08)], fill=(255, 255, 255), width=2)
     else:
         for ex, ey in ((0.12, -0.12), (0.58, -0.12)):
-            if eyes == "dot":
-                circle(ex, ey, 0.10, fill=black)
-            elif eyes == "wide":
+            if eyes == "wide":
                 # 눈알 돌출 충격
                 circle(ex, ey, 0.24, fill=(255, 255, 255), outline=black, width=lw)
                 circle(ex + 0.04, ey, 0.08, fill=black)
@@ -857,7 +907,18 @@ def _draw_face(d: ImageDraw.ImageDraw, fp, R: float, p: Dict, char_type: str = "
                 line((ex - 0.12, ey - 0.12), (ex + 0.12, ey + 0.12))
                 line((ex - 0.12, ey + 0.12), (ex + 0.12, ey - 0.12))
             elif eyes == "squint":
-                line((ex - 0.13, ey), (ex + 0.13, ey), width=lw + 2)
+                line((ex - 0.14, ey), (ex + 0.14, ey), width=lw + 3)
+            elif char_type == "A":
+                # 주인공 빼딱맨: 반쯤 감긴 시니컬한 눈 (half-closed cynical eyes)
+                circle(ex, ey, 0.15, fill=(255, 255, 255), outline=black, width=lw)
+                circle(ex + 0.02, ey + 0.02, 0.09, fill=black)
+                x_e, y_e = fp(ex, ey)
+                r_e = 0.15 * R
+                # 위쪽 눈꺼풀이 절반 내려앉은 시니컬한 눈매
+                d.chord((x_e - r_e - 1, y_e - r_e - 1, x_e + r_e + 1, y_e + r_e + 1), start=180, end=360, fill=(255, 255, 255), outline=black, width=lw)
+                d.line([fp(ex - 0.18, ey - 0.02), fp(ex + 0.18, ey - 0.02)], fill=black, width=lw + 1)
+            elif eyes == "dot":
+                circle(ex, ey, 0.10, fill=black)
             else:  # angry
                 circle(ex, ey, 0.09, fill=black)
 
@@ -911,9 +972,9 @@ def _draw_face(d: ImageDraw.ImageDraw, fp, R: float, p: Dict, char_type: str = "
             # 비열한 송곳니 포인트
             d.polygon([fp(mx + 0.08, my + 0.06), fp(mx + 0.16, my + 0.06), fp(mx + 0.12, my + 0.16)], fill=(255, 255, 255), outline=black)
         else:
-            # 주인공 자신만만한 사이다 미소 (치아 하이라이트)
-            line((mx - 0.26, my + 0.04), (mx + 0.12, my + 0.04), (mx + 0.38, my - 0.12), width=lw + 1)
-            d.polygon([fp(mx - 0.05, my + 0.04), fp(mx + 0.18, my + 0.04), fp(mx + 0.25, my - 0.02)], fill=(255, 255, 255))
+            # 주인공 빼딱맨: 삐딱하게 치켜올린 비웃는 썩소 (crooked sarcastic smirk)
+            line((mx - 0.28, my + 0.08), (mx + 0.08, my + 0.05), (mx + 0.40, my - 0.16), width=lw + 2)
+            d.polygon([fp(mx - 0.04, my + 0.05), fp(mx + 0.18, my + 0.05), fp(mx + 0.28, my - 0.04)], fill=(255, 255, 255), outline=black)
     elif mouth == "frown":
         line((mx - 0.26, my + 0.12), (mx, my), (mx + 0.26, my + 0.12), width=lw + 1)
     else:  # smile
@@ -1000,6 +1061,60 @@ def fx_dust(d, x, floor_y, t):
         r = 22 + 40 * k
         d.ellipse((x - 120 - 150 * k - r, floor_y - 20 - r, x - 120 - 150 * k + r, floor_y - 20 + r),
                   fill=(225 - int(40 * k), 215 - int(40 * k), 200 - int(40 * k)))
+
+
+def fx_anger_vein(d: ImageDraw.ImageDraw, x: float, y: float, t: float, scale: float = 1.35) -> None:
+    """붉은 4갈래 분노 혈관 마크 (anger_vein)"""
+    g = (26 + 6 * math.sin(t * 20)) * scale
+    for sx, sy, a0 in ((1, 1, 180), (-1, 1, 270), (-1, -1, 0), (1, -1, 90)):
+        cx, cy = x + sx * g, y + sy * g
+        d.arc((cx - g, cy - g, cx + g, cy + g), a0, a0 + 90, fill=(235, 25, 25), width=int(12 * scale))
+
+
+def fx_question_mark_overlay(d: ImageDraw.ImageDraw, x: float, y: float, t: float) -> None:
+    """어이없는 리액션 물음표 오버레이 (question_mark)"""
+    bounce = abs(math.sin(t * 7.5)) * 22
+    qy = y - 100 - bounce
+    fnt = get_font(150)
+    for ox, oy in ((-6, -6), (6, -6), (-6, 6), (6, 6), (0, 8), (0, -8), (-8, 0), (8, 0)):
+        d.text((x + ox, qy + oy), "?", font=fnt, fill=(15, 15, 20), anchor="mm")
+    d.text((x, qy), "?", font=fnt, fill=(255, 235, 30), anchor="mm")
+
+
+def fx_soul_leaving_overlay(d: ImageDraw.ImageDraw, x: float, y: float, t: float) -> None:
+    """영혼 탈출 유체이탈 오버레이 (soul_leaving)"""
+    drift = (t * 120) % 340
+    wobble = math.sin(t * 6.5) * 24
+    sx, sy = x + 35 + wobble, y - 50 - drift
+    d.ellipse((sx - 38, sy - 38, sx + 38, sy + 38), fill=(215, 240, 255), outline=(100, 160, 240), width=4)
+    d.ellipse((sx - 18, sy - 14, sx - 6, sy - 2), fill=(80, 120, 190))
+    d.ellipse((sx + 6, sy - 14, sx + 18, sy - 2), fill=(80, 120, 190))
+    d.ellipse((sx - 10, sy + 8, sx + 10, sy + 22), fill=(80, 120, 190))
+    pts = [(sx, sy + 38), (sx - 18, sy + 75), (sx + 16, sy + 115), (sx, sy + 155)]
+    d.line(pts, fill=(185, 225, 255), width=20, joint="curve")
+
+
+def fx_impact_keyword_typography(d: ImageDraw.ImageDraw, keyword: str, t: float, dur: float) -> None:
+    """결정타 컷 큼직한 타격감 임팩트 타이포 (impact_keyword)"""
+    if not keyword or not keyword.strip():
+        return
+    kw = keyword.strip()
+    scale = 1.0
+    if t < 0.22:
+        k = t / 0.22
+        scale = 1.45 - 0.45 * _ease(k)
+
+    cx, cy = W / 2.0, 780.0
+    font_size = int(120 * scale)
+    fnt = get_font(font_size)
+
+    if t < 0.45:
+        burst_k = min(1.0, t / 0.45)
+        fx_burst(d, cx, cy, 230 + 80 * burst_k, "", fnt)
+
+    d.text((cx + 8, cy + 10), kw, font=fnt, fill=(10, 10, 15), anchor="mm")
+    d.text((cx, cy), kw, font=fnt, fill=(255, 235, 30), anchor="mm",
+           stroke_width=12, stroke_fill=(15, 15, 20))
 
 
 def draw_props(d: ImageDraw.ImageDraw, fig_a: Dict, fig_b: Dict, scene_text: str,
@@ -2315,40 +2430,69 @@ class SceneVisuals:
         active_seg = self.get_active_segment(t)
         cur_speaker = (active_seg.get("speaker") or "").strip().upper() if active_seg else ""
 
-        # 기본 카메라 설정
-        if self.cam["zoom_out"]:
-            z = _lerp(1.3, 1.0, u)
-        elif self.cam["zoom_in"]:
-            z = _lerp(1.0, 1.3, u)
-        else:
-            z = _lerp(1.0, 1.06, u)
+        shot_type = getattr(self.scene, "shot_type", "Medium") or "Medium"
+        cam_fx = getattr(self.scene, "camera_effect", "none") or "none"
 
+        # 1. 샷 앵글 기본 줌 및 타겟 센터
         target_cx, target_cy = W / 2.0, H / 2.0
         blend = 0.0
 
-        # 1. 빌런 단독 클로즈업 (Zoom-in 1.15~1.25x)
-        # 빌런 B가 적반하장으로 소리치거나 깐족거리는 구간
+        if shot_type == "Extreme Close-up":
+            z = 1.48
+            target_cx = self.main_x if (self.idx == 3 or "a" in cur_speaker.lower() or not cur_speaker) else self.foe_x
+            target_cy = 740.0
+            blend = 0.85
+        elif shot_type == "Close-up":
+            z = 1.28
+            target_cx = self.main_x if (self.idx == 3 or "a" in cur_speaker.lower() or not cur_speaker) else self.foe_x
+            target_cy = 770.0
+            blend = 0.75
+        elif shot_type == "Low Angle":
+            z = 1.15
+            target_cy = 920.0
+            blend = 0.65
+        elif shot_type == "Wide":
+            z = 1.0
+            blend = 0.0
+        else:
+            if self.cam["zoom_out"]:
+                z = _lerp(1.3, 1.0, u)
+            elif self.cam["zoom_in"]:
+                z = _lerp(1.0, 1.3, u)
+            else:
+                z = _lerp(1.0, 1.06, u)
+
+        # 2. 다이내믹 카메라 연출 (camera_effect)
+        if cam_fx == "zoom_in_fast":
+            fast_u = math.pow(u, 0.40)
+            z = max(z, _lerp(1.0, 1.48, fast_u))
+            target_cx = self.main_x if self.idx in (3, 5) else (self.foe_x if "b" in cur_speaker.lower() else W / 2.0)
+            target_cy = 780.0
+            blend = max(blend, 0.75)
+
+        # 빌런 단독 클로즈업 가중치
         is_villain_rant = (self.idx == 3 or "적반하장" in text or (cur_speaker in ("B", "빌런") and self.idx <= 3))
-        if is_villain_rant:
+        if is_villain_rant and shot_type == "Medium":
             target_cx = self.foe_x
             target_cy = 820.0
-            blend = 0.65
+            blend = max(blend, 0.65)
             z = max(z, _lerp(1.12, 1.24, _ease(u)))
 
-        # 2. 주인공 참교육 선언 클로즈업 (Zoom-in 1.20~1.25x)
-        # 주인공 A가 무전기로 본부에 투하 요청하는 씬 5
+        # 주인공 참교육 선언 클로즈업 가중치
         is_hero_call = (self.idx == 4 or any(k in text for k in ["본부", "투하", "특단", "요망"]))
-        if is_hero_call and self.idx < 5:
+        if is_hero_call and self.idx < 5 and shot_type == "Medium":
             target_cx = self.main_x
             target_cy = 790.0
-            blend = 0.70
+            blend = max(blend, 0.70)
             z = max(z, _lerp(1.12, 1.25, _ease(u)))
 
         # 3. 임팩트 카메라 쉐이크 (Camera Shake)
-        # 10톤 당근이나 바벨이 떨어져 쿵!! 하고 충돌하는 순간 (씬 6~7 초반 0.6초간 강력 진동)
         amp = 16.0 if self.cam["shake"] else 0.0
-        hit = self.ctx["hit_t"]
+        if cam_fx == "camera_shake":
+            shake_fade = max(0.2, 1.0 - u * 0.4)
+            amp = max(amp, 38.0 * shake_fade)
 
+        hit = self.ctx["hit_t"]
         is_impact_crush = (self.idx in (5, 6) and t <= 0.65) or (self.foe_pose in ("crushed", "fall") and t <= 0.65) or ("쿵" in text and t <= 0.65)
         if is_impact_crush:
             shake_fade = max(0.0, 1.0 - t / 0.65)
@@ -2403,7 +2547,7 @@ class SceneVisuals:
         main_p = POSES[self.main_pose](ta, self.ctx)
         foe_p = POSES[self.foe_pose](ta, self.ctx)
 
-        # 실시간 말하는 사람의 입 애니메이션 (말할 때만 talk 개폐, 아닐 때는 원래 포즈 표정 유지)
+        # 실시간 말하는 사람의 입 애니메이션
         if is_a_talking:
             main_p["mouth"] = "talk"
             main_p["mo"] = abs(math.sin(ta * 13))
@@ -2516,12 +2660,37 @@ class SceneVisuals:
         # --- 카메라 연출 적용 (배경, 캐릭터, 소품, 이펙트 줌/패닝)
         img, (cam_x0, cam_y0, cam_z) = self._camera(img, i, t)
 
+        # 스포트라이트 암전 연출 (spotlight_darken)
+        if getattr(self.scene, "camera_effect", "") == "spotlight_darken":
+            spot_x = int((self.main_x - cam_x0) * cam_z)
+            spot_y = int((780.0 - cam_y0) * cam_z)
+            spot_layer = Image.new("RGBA", (W, H), (8, 10, 16, 215))
+            d_spot = ImageDraw.Draw(spot_layer)
+            for rad, alpha in ((460, 185), (360, 130), (270, 70), (190, 0)):
+                d_spot.ellipse((spot_x - rad, spot_y - rad, spot_x + rad, spot_y + rad), fill=(8, 10, 16, alpha))
+            img = Image.alpha_composite(img.convert("RGBA"), spot_layer).convert("RGB")
+
         # --- 고정 UI 오버레이 레이어 (카메라 줌/패닝 영향 없음 -> 상단 이탈/꼬리 늘어남 원천 차단!)
         d_ui = ImageDraw.Draw(img)
         head_a_screen = ((main_fig["head"][0] - cam_x0) * cam_z,
                          (main_fig["head"][1] - cam_y0) * cam_z - (main_fig["R"] * cam_z) - 10)
         head_b_screen = ((foe_fig["head"][0] - cam_x0) * cam_z,
                          (foe_fig["head"][1] - cam_y0) * cam_z - (foe_fig["R"] * cam_z) - 10)
+
+        # 컷별 UI 오버레이 연출 (ui_overlay)
+        cur_ui = getattr(self.scene, "ui_overlay", "none") or "none"
+        if cur_ui == "anger_vein":
+            fx_anger_vein(d_ui, head_a_screen[0] + 65, head_a_screen[1] - 35, t)
+        elif cur_ui == "question_mark":
+            fx_question_mark_overlay(d_ui, head_a_screen[0], head_a_screen[1] - 25, t)
+        elif cur_ui == "soul_leaving":
+            target_head = head_b_screen if self.idx in (5, 6) or self.foe_pose in ("crushed", "fall", "shock") else head_a_screen
+            fx_soul_leaving_overlay(d_ui, target_head[0], target_head[1] - 20, t)
+
+        # 결정타 임팩트 타이포 (impact_keyword)
+        cur_impact = getattr(self.scene, "impact_keyword", "") or ""
+        if cur_impact:
+            fx_impact_keyword_typography(d_ui, cur_impact, t, self.dur)
 
         # 현재 시간(t)에 발화 중인 화자별 대사/해설 말풍선 실시간 렌더링 (Y축 충돌 방지 및 타이밍 싱크)
         active_segs = self.get_active_segments(t)
@@ -3050,6 +3219,14 @@ class StickmanShortRenderer:
             wav_path = tmp / f"audio_{idx:02d}.wav"
             shutil.copy2(existing_scene_wav, wav_path)
             pcm = self._decode_pcm(wav_path)
+            pause_sec = float(getattr(scene, "pause_after", 0.0) or 0.0)
+            if pause_sec > 0.05:
+                pcm.extend(array("h", [0] * int(pause_sec * SR)))
+                with wave.open(str(wav_path), "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SR)
+                    wf.writeframes(pcm.tobytes())
             target_dur = len(pcm) / SR
 
             # 타임라인 재구성 (화자별 말풍선 스위칭, 0.2초 이하 타이트한 무음 완충)
@@ -3073,6 +3250,9 @@ class StickmanShortRenderer:
                     cur_t += seg_dur
 
             cues = [c for c in parse_sfx_cues(scene.sfx_cue)]
+            custom_sfx = getattr(scene, "sfx", "") or ""
+            if custom_sfx and custom_sfx != "none" and not any(canonical_sfx(c[1]) == canonical_sfx(custom_sfx) for c in cues):
+                cues.append((0.15, custom_sfx))
             if not cues:
                 cues = list(DEFAULT_SFX.get(pose, [(0.0, "pop")]))
             hit_t = 0.55
@@ -3085,7 +3265,8 @@ class StickmanShortRenderer:
         tts, timeline = self._synthesize_tts(scene.tts_narration, tmp, f"tts_{idx:02d}")
         lead, tail = 0.08, 0.12
         tts_len = len(tts) / SR
-        dur = tts_len + lead + tail if tts_len > 0 else float(scene.duration_sec)
+        pause_sec = float(getattr(scene, "pause_after", 0.0) or 0.0)
+        dur = tts_len + lead + tail + pause_sec if tts_len > 0 else max(float(scene.duration_sec), pause_sec + 0.4)
 
         # 씬 비디오 프레임 수와 정확히 일치하는 오디오 샘플 수 계산
         n_frames = max(1, int(round(dur * FPS)))
@@ -3093,6 +3274,10 @@ class StickmanShortRenderer:
         total_samples = int(round(target_dur * SR))
 
         cues = [c for c in parse_sfx_cues(scene.sfx_cue)]
+        custom_sfx = getattr(scene, "sfx", "") or ""
+        if custom_sfx and custom_sfx != "none" and not any(canonical_sfx(c[1]) == canonical_sfx(custom_sfx) for c in cues):
+            sfx_time = 0.1 if tts_len == 0 else min(0.15, max(0.0, target_dur - 0.4))
+            cues.append((sfx_time, custom_sfx))
         if not cues:
             cues = list(DEFAULT_SFX.get(pose, [(0.0, "pop")]))
         cues = [(min(max(ts, 0.0), target_dur - 0.2), name) for ts, name in cues]

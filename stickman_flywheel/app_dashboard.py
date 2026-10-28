@@ -1300,19 +1300,69 @@ elif active_nav == "✍️ Step 2: 대본 검수":
         twist = st.text_area("결말 3초 반전 포인트 (사이다 Hook)", script.analysis.twist_point, key=f"{key}_twist", disabled=disabled, height=68)
 
         scene_inputs = []
+        shot_options = ["Wide", "Medium", "Close-up", "Extreme Close-up", "Low Angle"]
+        cam_options = ["none", "zoom_in_fast", "camera_shake", "spotlight_darken"]
+        ui_options = ["none", "anger_vein", "question_mark", "soul_leaving"]
+        sfx_options = ["none", "cricket_chirp", "record_scratch", "dramatic_thud", "punch_hit", "shock_beep", "whoosh", "pop", "thud", "ding", "boing"]
+
         for sc in script.scenes:
             n = sc.scene_number
-            with st.expander(f"씬 {n} · {sc.duration_sec}초 · {sc.subtitle_text}", expanded=(n == 1)):
+            cur_shot = getattr(sc, "shot_type", "Medium") or "Medium"
+            cur_pause = float(getattr(sc, "pause_after", 0.0) or 0.0)
+            is_silent = (n == 3) or not (sc.tts_narration or "").strip()
+
+            expander_title = f"컷 {n} [{cur_shot}] · {sc.duration_sec}초 (+정적 {cur_pause:.1f}s) · {sc.subtitle_text or ('(무음 리액션)' if is_silent else '대사')}"
+            with st.expander(expander_title, expanded=(n == 1 or n == 3)):
+                if is_silent:
+                    st.markdown("""
+                        <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; padding: 6px 12px; color: #FCA5A5; font-size: 0.82rem; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <span>🤫</span> <strong>컷 3 무음 리액션 컷</strong>: 대사 없이 빼딱맨의 어이없는 표정 클로즈업 + 0.8초 정적 & 효과음 연출
+                        </div>
+                    """, unsafe_allow_html=True)
+
                 col_sc1, col_sc2 = st.columns([1, 1])
                 with col_sc1:
                     action = st.text_area("스틱맨 액션 / 연출 (stickman_action)", sc.stickman_action, key=f"{key}_a{n}", disabled=disabled, height=65)
                     subtitle = st.text_input("자막 텍스트 (subtitle_text)", sc.subtitle_text, key=f"{key}_s{n}", disabled=disabled)
+                    impact = st.text_input("💥 임팩트 타이포 (impact_keyword, 2~4글자)", getattr(sc, "impact_keyword", "") or "", key=f"{key}_imp{n}", disabled=disabled, placeholder="예: 참교육, 팩폭 (강렬한 결정타 컷)")
+                    
+                    shot_idx = shot_options.index(cur_shot) if cur_shot in shot_options else 1
+                    shot_type = st.selectbox("🎬 샷 앵글 (shot_type)", shot_options, index=shot_idx, key=f"{key}_shot{n}", disabled=disabled)
+
                     cur_props = ", ".join(getattr(sc, "visual_props", []) or [])
                     vprops = st.text_input("상황 오브젝트 (visual_props, 쉼표 구분)", cur_props, key=f"{key}_vp{n}", disabled=disabled, placeholder="예: luxury_car_double_parked, tight_blocking_car")
+
                 with col_sc2:
-                    narration = st.text_area("TTS 성우 대사 (tts_narration)", sc.tts_narration, key=f"{key}_n{n}", disabled=disabled, height=65)
-                    sfx = st.text_input("효과음 큐 (sfx_cue)", sc.sfx_cue, key=f"{key}_f{n}", disabled=disabled)
-                scene_inputs.append((n, action, narration, subtitle, sfx, vprops))
+                    narration = st.text_area("TTS 성우 대사 (tts_narration, 무음컷은 공백)", sc.tts_narration, key=f"{key}_n{n}", disabled=disabled, height=65)
+                    
+                    cur_cam = getattr(sc, "camera_effect", "none") or "none"
+                    cam_idx = cam_options.index(cur_cam) if cur_cam in cam_options else 0
+                    camera_effect = st.selectbox("🎥 카메라 연출 (camera_effect)", cam_options, index=cam_idx, key=f"{key}_cam{n}", disabled=disabled)
+
+                    cur_ui = getattr(sc, "ui_overlay", "none") or "none"
+                    ui_idx = ui_options.index(cur_ui) if cur_ui in ui_options else 0
+                    ui_overlay = st.selectbox("💢 UI 오버레이 (ui_overlay)", ui_options, index=ui_idx, key=f"{key}_ui{n}", disabled=disabled)
+
+                    cur_sfx = getattr(sc, "sfx", "") or getattr(sc, "sfx_cue", "") or "none"
+                    # 정규화된 이름으로 매핑 시도
+                    sfx_idx = sfx_options.index(cur_sfx) if cur_sfx in sfx_options else 0
+                    sfx = st.selectbox("🔊 효과음 (sfx)", sfx_options, index=sfx_idx, key=f"{key}_sfx{n}", disabled=disabled)
+
+                    pause_val = st.number_input("⏱️ 대사 후 정적 시간 (초, pause_after)", min_value=0.0, max_value=4.0, value=cur_pause, step=0.1, key=f"{key}_pause{n}", disabled=disabled)
+
+                scene_inputs.append({
+                    "n": n,
+                    "action": action,
+                    "narration": narration,
+                    "subtitle": subtitle,
+                    "impact": impact,
+                    "shot_type": shot_type,
+                    "camera_effect": camera_effect,
+                    "ui_overlay": ui_overlay,
+                    "sfx": sfx,
+                    "pause_after": pause_val,
+                    "vprops": vprops,
+                })
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1320,13 +1370,20 @@ elif active_nav == "✍️ Step 2: 대본 검수":
             data = script.model_dump()
             data["episode_title"] = title
             data["analysis"]["twist_point"] = twist
-            for n, action, narration, subtitle, sfx, vprops in scene_inputs:
+            for item in scene_inputs:
+                n = item["n"]
                 scene = data["scenes"][n - 1]
-                scene["stickman_action"] = action
-                scene["tts_narration"] = narration
-                scene["subtitle_text"] = subtitle
-                scene["sfx_cue"] = sfx
-                scene["visual_props"] = [p.strip() for p in vprops.split(",") if p.strip()]
+                scene["stickman_action"] = item["action"]
+                scene["tts_narration"] = item["narration"]
+                scene["subtitle_text"] = item["subtitle"]
+                scene["impact_keyword"] = item["impact"]
+                scene["shot_type"] = item["shot_type"]
+                scene["camera_effect"] = item["camera_effect"]
+                scene["ui_overlay"] = item["ui_overlay"]
+                scene["sfx"] = item["sfx"]
+                scene["sfx_cue"] = item["sfx"] if item["sfx"] != "none" else ""
+                scene["pause_after"] = float(item["pause_after"])
+                scene["visual_props"] = [p.strip() for p in item["vprops"].split(",") if p.strip()]
             return StickmanScriptOutput.model_validate(data)
 
 
@@ -1464,10 +1521,50 @@ elif active_nav == "🎵 Step 3: 오디오 연출":
     st.markdown("""
         <div style="margin-top: 18px; padding: 14px 18px; background: #0F172A; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.88rem; color: #CBD5E1;">
             🎙️ <strong>Gemini 2.5 Native TTS 멀티 보이스 캐스팅</strong>: 
-            주인공 A(블루 나시 - 코레), 빌런 B(오렌지 상의 - 펜릴/퍽), 해설(딥 내레이션)이 자동으로 배역 매칭되어 감정 연기로 합성됩니다.
+            주인공 A(빼딱맨 다크 차콜 후디 - 코레), 빌런 B(오렌지 상의 - 펜릴/퍽), 해설(딥 내레이션)이 자동으로 배역 매칭되어 감정 연기로 합성됩니다.
         </div>
         </div>
     """, unsafe_allow_html=True)
+
+    # 컷별 오디오 타임라인 & SFX 연출 모니터 (6컷 콘티 연동)
+    if script and script.scenes:
+        st.markdown("""
+            <div style="font-weight: 800; font-size: 1.05rem; margin-top: 24px; margin-bottom: 12px; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                <span>⏱️</span> 6컷 오디오 타임라인 & 효과음(SFX) 정적 연출 모니터
+            </div>
+        """, unsafe_allow_html=True)
+
+        timeline_cols = st.columns(len(script.scenes))
+        for idx, (col_t, sc) in enumerate(zip(timeline_cols, script.scenes), start=1):
+            with col_t:
+                is_reaction = (idx == 3) or not (sc.tts_narration or "").strip()
+                border_color = "rgba(239, 68, 68, 0.6)" if is_reaction else "rgba(99, 102, 241, 0.35)"
+                bg_card = "rgba(239, 68, 68, 0.08)" if is_reaction else "#0F172A"
+                sfx_name = getattr(sc, "sfx", "") or getattr(sc, "sfx_cue", "") or "none"
+                pause_s = getattr(sc, "pause_after", 0.0) or 0.0
+                shot = getattr(sc, "shot_type", "Medium")
+
+                status_label = "🤫 무음 리액션" if is_reaction else "🎙️ TTS 발화"
+                st.markdown(f"""
+                    <div style="background: {bg_card}; border: 1.5px solid {border_color}; border-radius: 10px; padding: 12px 10px; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-weight: 800; font-size: 0.88rem; color: #FFFFFF;">컷 {idx}</span>
+                                <span style="font-size: 0.72rem; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: #94A3B8;">{shot}</span>
+                            </div>
+                            <div style="font-size: 0.75rem; font-weight: 700; color: {'#FCA5A5' if is_reaction else '#38BDF8'}; margin-bottom: 6px;">
+                                {status_label}
+                            </div>
+                            <div style="font-size: 0.76rem; color: #CBD5E1; line-height: 1.3; max-height: 55px; overflow-y: auto; margin-bottom: 8px;">
+                                {"(대사 없음 / 0.8초 정적)" if is_reaction else sc.tts_narration}
+                            </div>
+                        </div>
+                        <div style="font-size: 0.72rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
+                            <div style="color: #F59E0B; font-weight: 600;">🔊 {sfx_name}</div>
+                            <div style="color: #94A3B8;">⏱️ 정적: {pause_s:.1f}s</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
 
     st.markdown("""
         <div class="step-guide-card">
