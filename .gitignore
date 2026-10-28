@@ -30,3 +30,9 @@ stickman_flywheel/pipeline_outputs/audio/**/scene_01_orig_glitch.wav
 # BGM 대용량 WAV 파일 (Streamlit 웹 재생용 가벼운 MP3는 유지)
 stickman_flywheel/assets/bgm/*.wav
 !stickman_flywheel/assets/sfx/*.wav
+
+# OAuth/서비스계정 인증 파일 (절대 커밋 금지)
+stickman_flywheel/config/
+client_secret*.json
+client_secrets.json
+token.json
