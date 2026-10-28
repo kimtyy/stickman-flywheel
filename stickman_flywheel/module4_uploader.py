@@ -27,6 +27,19 @@ YOUTUBE_UPLOAD_SCOPES = [
     "https://www.googleapis.com/auth/youtube",
 ]
 
+# 초기 영상은 사람이 직접 확인한 뒤 수동으로 공개 전환한다: private/unlisted 외의 값은 모두 private 로 강제한다.
+DEFAULT_PRIVACY = "private"
+ALLOWED_PRIVACY = ("private", "unlisted")
+
+
+def safe_privacy(value: Optional[str]) -> str:
+    v = (value or "").strip().lower()
+    if v in ALLOWED_PRIVACY:
+        return v
+    print(f"[YouTube Uploader] 공개 상태 '{value}' 는 허용되지 않아 '{DEFAULT_PRIVACY}' 로 강제합니다.")
+    return DEFAULT_PRIVACY
+
+
 THEME_EMOJIS = [
     (["당근", "중고", "네고", "매너온도", "거래"], "🥕"),
     (["헬스", "스쿼트", "바벨", "헬창", "원판", "쇠질", "운동"], "🏋️"),
@@ -108,7 +121,7 @@ def generate_short_metadata(script: StickmanScriptOutput) -> Dict[str, Any]:
         "description": description,
         "tags": clean_tags,
         "categoryId": "23",  # 23: Comedy
-        "privacyStatus": "public",
+        "privacyStatus": DEFAULT_PRIVACY,
         "emoji": emoji,
     }
 
@@ -184,13 +197,15 @@ class YouTubeUploader:
         self,
         video_path: Path,
         metadata: Dict[str, Any],
-        privacy_status: str = "public",
+        privacy_status: str = DEFAULT_PRIVACY,
     ) -> Dict[str, Any]:
         """비디오 파일과 메타데이터를 유튜브에 업로드 (Dry-Run 시 검증 페이로드 반환)."""
         if not video_path.exists():
             raise FileNotFoundError(f"업로드할 비디오 파일을 찾을 수 없습니다: {video_path}")
 
         file_size_mb = round(video_path.stat().st_size / (1024 * 1024), 2)
+        privacy_status = safe_privacy(privacy_status)
+        metadata = {k: v for k, v in metadata.items() if k not in ("publishAt", "publish_at")}  # 예약 자동 공개 차단
 
         # 1. Dry-Run / 시뮬레이션 모드
         if self.dry_run or not self.service:
@@ -288,7 +303,7 @@ class YouTubeUploader:
 def run_pipeline_step4(
     script: StickmanScriptOutput,
     video_path: Optional[Path] = None,
-    privacy_status: str = "public",
+    privacy_status: str = DEFAULT_PRIVACY,
 ) -> Dict[str, Any]:
     """4단계 전체 실행: 승인 대본 메타데이터 패키징 → 영상 업로드(또는 시뮬레이션)."""
     # 1. 비디오 파일 경로 확인

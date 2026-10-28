@@ -183,7 +183,7 @@ def _publish_one(item: Dict[str, Any]) -> str:
     update_golden_queue_item(ep_id, status="uploading", attempts=attempts)
     try:
         res = run_pipeline_step4(load_script(APPROVED_DIR / f"{ep_id}.json"), video_path=video,
-                                 privacy_status="public")
+                                 privacy_status="private")
     except Exception as e:  # 파일 없음 등 사전 오류
         res = {"status": "failed", "message": str(e), "error": f"{type(e).__name__}: {e}"}
 

@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 from googleapiclient.discovery import build
 
-from schemas import StickmanScriptOutput
+from schemas import SceneBeat, StickmanScriptOutput
 from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
@@ -186,6 +186,49 @@ SYSTEM_PROMPT = """너는 스틱맨 슬랩스틱 숏폼 전문 수석 연출 감
 
 
 
+REQUIRED_CUTS = 6
+MAX_ATTEMPTS_PER_MODEL = 2
+
+
+def _trim_to_required_cuts(scenes: List[SceneBeat]) -> List[SceneBeat]:
+    """초과 컷 보정: 훅(첫 컷)과 마무리(마지막 컷)는 보존하고 나머지에서 균등 간격으로 선택."""
+    if len(scenes) <= REQUIRED_CUTS:
+        return scenes
+    mid = scenes[1:-1]
+    keep = REQUIRED_CUTS - 2
+    step = len(mid) / keep
+    picked = [mid[int(i * step)] for i in range(keep)]
+    return [scenes[0], *picked, scenes[-1]]
+
+
+def normalize_storyboard(script: StickmanScriptOutput) -> None:
+    """LLM 이 새 연출 필드를 누락/위반해도 렌더러가 의존하는 규칙(컷 3 무음 리액션, 컷 5 결정타)을 보장."""
+    scenes = script.scenes
+    if len(scenes) != REQUIRED_CUTS:
+        return
+    react = scenes[2]
+    react.tts_narration = ""
+    react.pause_after = react.pause_after if react.pause_after > 0 else 0.8
+    react.duration_sec = min(max(react.duration_sec, 2), 3)
+    if react.camera_effect not in ("zoom_in_fast", "spotlight_darken"):
+        react.camera_effect = "zoom_in_fast"
+    if react.ui_overlay not in ("question_mark", "soul_leaving"):
+        react.ui_overlay = "question_mark"
+    if react.shot_type not in ("Close-up", "Extreme Close-up"):
+        react.shot_type = "Close-up"
+    if not react.sfx or react.sfx == "none":
+        react.sfx = "cricket_chirp"
+    if not react.subtitle_text.strip():
+        react.subtitle_text = "(말문이 턱 막힘...)"
+    strike = scenes[4]
+    if not strike.impact_keyword.strip():
+        strike.impact_keyword = "참교육"
+    if strike.camera_effect == "none":
+        strike.camera_effect = "camera_shake"
+    if strike.ui_overlay == "none":
+        strike.ui_overlay = "anger_vein"
+
+
 class EmotionalReverseScriptGenerator:
     def __init__(self) -> None:
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -245,36 +288,54 @@ class EmotionalReverseScriptGenerator:
             "gemini-3.1-pro-preview",
             "gemini-2.5-pro",
         ]
-        last_err = None
-        response = None
+        base_prompt = self._build_user_prompt(trends, outliers, custom_topic)
+        last_err: Optional[Exception] = None
+        script: Optional[StickmanScriptOutput] = None
+        repaired_fallback: Optional[StickmanScriptOutput] = None
         for model in models_to_try:
-            try:
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=self._build_user_prompt(trends, outliers, custom_topic),
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        response_schema=StickmanScriptOutput,
-                        temperature=1.0,
-                    ),
-                )
+            prompt = base_prompt
+            for attempt in range(MAX_ATTEMPTS_PER_MODEL):
+                try:
+                    response = self.client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPT,
+                            response_mime_type="application/json",
+                            response_schema=StickmanScriptOutput,
+                            temperature=1.0,
+                        ),
+                    )
+                    parsed = response.parsed
+                    if not isinstance(parsed, StickmanScriptOutput):
+                        parsed = StickmanScriptOutput.model_validate(json.loads(response.text))
+                except Exception as e:  # API 오류 / JSON·Pydantic 검증 실패 → 같은 모델 재시도 후 다음 모델
+                    last_err = e
+                    print(f"[Script] {model} 시도 {attempt + 1} 실패: {type(e).__name__}: {e}")
+                    continue
+                if len(parsed.scenes) == REQUIRED_CUTS:
+                    script = parsed
+                    break
+                last_err = ValueError(f"컷 수 {len(parsed.scenes)} (필요: {REQUIRED_CUTS})")
+                print(f"[Script] {model} 시도 {attempt + 1}: {last_err} → 재시도")
+                if repaired_fallback is None and len(parsed.scenes) > REQUIRED_CUTS:
+                    repaired_fallback = parsed  # 7컷 이상은 최후 수단으로 결정적 보정 가능
+                prompt = (base_prompt + "\n\n[교정 지시] 직전 응답은 컷이 "
+                          f"{len(parsed.scenes)}개였다. scenes 는 반드시 정확히 {REQUIRED_CUTS}개로 작성하라.")
+            if script is not None:
                 break
-            except Exception as e:
-                last_err = e
-                continue
 
-        if response is None:
+        if script is None and repaired_fallback is not None:
+            script = repaired_fallback
+            script.scenes = _trim_to_required_cuts(script.scenes)
+            print(f"[Script] 재시도 실패 → 초과 컷을 {REQUIRED_CUTS}컷으로 결정적 보정")
+        if script is None:
             raise RuntimeError(f"대본 생성 실패 (시도한 모델: {models_to_try}): {last_err}")
 
-        script: StickmanScriptOutput
-        if isinstance(response.parsed, StickmanScriptOutput):
-            script = response.parsed
-        else:
-            script = StickmanScriptOutput.model_validate(json.loads(response.text))
+        normalize_storyboard(script)
 
         script.episode_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        script.total_duration_sec = int(round(sum(s.duration_sec + (getattr(s, "pause_after", 0.0) or 0.0) for s in script.scenes)))
+        script.total_duration_sec = int(round(sum(s.duration_sec for s in script.scenes)))
         script.calendar_render_event_id = None
         script.calendar_upload_event_id = None
         for idx, scene in enumerate(script.scenes, 1):
@@ -327,7 +388,11 @@ def run_curation_batch(count: int = 3, progress_callback=None) -> List[Dict[str,
             progress_callback(msg, 0.2 + (0.7 * (i / total)))
 
         custom_topic = f"[{cfg['category']}] {cfg['theme_prompt']}"
-        script = generator.generate(trends=trends[:5], custom_topic=custom_topic)
+        try:
+            script = generator.generate(trends=trends[:5], custom_topic=custom_topic)
+        except Exception as e:  # 한 후보 실패가 배치 전체(09:00 서빙)를 막지 않도록 건너뛴다
+            print(f"[Curation] 후보 {candidate_no} 생성 실패 → 건너뜀: {e}")
+            continue
 
         # 현실적인 예상 적중률 산출 (91%~97%)
         hit_rate = cfg["base_hit_rate"] + (hash(script.episode_id) % 3)
@@ -342,8 +407,10 @@ def run_curation_batch(count: int = 3, progress_callback=None) -> List[Dict[str,
         }
         results.append(candidate_data)
 
+    if not results:
+        raise RuntimeError("후보 대본을 하나도 생성하지 못했습니다 (모든 시도 실패).")
     if progress_callback:
-        progress_callback("3대 킬러 대본 큐레이션 완료!", 1.0)
+        progress_callback(f"킬러 대본 큐레이션 완료! ({len(results)}/{total}건)", 1.0)
     return results
 
 

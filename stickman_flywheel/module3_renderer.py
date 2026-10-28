@@ -25,7 +25,7 @@ from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 
-from schemas import SceneBeat, StickmanScriptOutput
+from schemas import SceneBeat, StickmanScriptOutput, normalize_shot_type
 from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
@@ -149,11 +149,13 @@ SFX_ALIASES: List[Tuple[str, List[str]]] = [
     ("cartoon_slip", ["slip", "slide", "skid", "미끄", "슬립"]),
     ("boing", ["boing", "bounce", "spring", "jump", "보잉"]),
     ("ding", ["ding", "bell", "chime", "ring", "딩"]),
+    ("dramatic_thud", ["dramatic", "쾅", "쿠웅", "쿵쾅"]),  # 'thud' 부분일치에 선점되지 않도록 thud 보다 앞에 둔다
     ("thud", ["thud", "fall", "crash", "bang", "drop", "쿵", "넘어"]),
     ("pop", ["pop", "click", "bubble", "팝"]),
     ("cricket_chirp", ["cricket", "chirp", "귀뚜라미", "정적", "침묵"]),
     ("record_scratch", ["scratch", "record", "스크래치", "멈칫"]),
-    ("dramatic_thud", ["dramatic", "쾅", "쿠웅", "쿵쾅"]),
+    ("car_horn", ["horn", "klaxon", "경적", "빵빵"]),
+    ("glass_break", ["glass", "shatter", "유리", "와장창"]),
 ]
 
 
@@ -176,7 +178,8 @@ class SfxSynth:
             "shock_beep": self._shock_beep, "cartoon_slip": self._cartoon_slip,
             "boing": self._boing, "ding": self._ding, "thud": self._thud, "pop": self._pop,
             "cricket_chirp": self._cricket_chirp, "record_scratch": self._record_scratch,
-            "dramatic_thud": self._dramatic_thud,
+            "dramatic_thud": self._dramatic_thud, "car_horn": self._car_horn,
+            "glass_break": self._glass_break,
         }
 
     def ensure_all(self) -> None:
@@ -324,6 +327,37 @@ class SfxSynth:
             noise = (rnd.random() * 2 - 1) * 0.4
             env = min(1.0, t / 0.02) * math.exp(-t * 4.5)
             out.append((math.sin(ph) * 0.6 + noise) * env)
+        return out
+
+    @staticmethod
+    def _car_horn() -> List[float]:
+        """차량 경적: 두 음(약 440/554Hz)을 겹친 사각파 계열 빵! 소리"""
+        out: List[float] = []
+        n = int(0.55 * SR)
+        for i in range(n):
+            t = i / SR
+            env = min(1.0, t / 0.01) * min(1.0, (0.55 - t) / 0.05)
+            v = sum(math.copysign(1.0, math.sin(2 * math.pi * f * t)) * 0.5 + math.sin(2 * math.pi * f * t) * 0.5
+                    for f in (440.0, 554.0)) / 2
+            out.append(v * env)
+        return out
+
+    @staticmethod
+    def _glass_break() -> List[float]:
+        """유리 깨짐: 노이즈 충격 + 고음 파편 튕김"""
+        rnd = random.Random(99)
+        out: List[float] = [0.0] * int(0.7 * SR)
+        for i in range(len(out)):
+            t = i / SR
+            out[i] = (rnd.random() * 2 - 1) * math.exp(-t * 14) * 0.8
+        for k in range(9):
+            start = int((0.03 + k * 0.045) * SR)
+            f = 2800 + rnd.random() * 3200
+            for j in range(int(0.08 * SR)):
+                if start + j >= len(out):
+                    break
+                t = j / SR
+                out[start + j] += math.sin(2 * math.pi * f * t) * math.exp(-t * 45) * 0.35
         return out
 
     @staticmethod
@@ -2316,11 +2350,16 @@ def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
 # =====================================================================
 # 7. 씬 비주얼 렌더러
 # =====================================================================
+FOE_SPEAKERS = ("B", "빌런", "상대", "여자", "진상")
+
+
 class SceneVisuals:
     def __init__(self, scene: SceneBeat, idx: int, total: int, title: str, pose: str,
                  dur: float, hit_t: float, timeline: Optional[List[Dict]] = None,
                  episode_setting: str = "") -> None:
         self.scene, self.idx, self.total, self.dur = scene, idx, total, dur
+        # idx 는 0 기반. 6컷 콘티는 1~6 컷 번호(idx+1)로, 레거시 7씬 에피소드는 기존 기준(idx)을 유지한다.
+        self.cut = idx + 1 if total == 6 else idx
         self.n_frames = max(1, int(round(dur * FPS)))
         self.ctx = {"hit_t": hit_t, "land_t": 0.9}
         self.cam = parse_camera(scene.camera_work)
@@ -2430,7 +2469,7 @@ class SceneVisuals:
         active_seg = self.get_active_segment(t)
         cur_speaker = (active_seg.get("speaker") or "").strip().upper() if active_seg else ""
 
-        shot_type = getattr(self.scene, "shot_type", "Medium") or "Medium"
+        shot_type = normalize_shot_type(getattr(self.scene, "shot_type", "Medium"))
         cam_fx = getattr(self.scene, "camera_effect", "none") or "none"
 
         # 1. 샷 앵글 기본 줌 및 타겟 센터
@@ -2439,12 +2478,12 @@ class SceneVisuals:
 
         if shot_type == "Extreme Close-up":
             z = 1.48
-            target_cx = self.main_x if (self.idx == 3 or "a" in cur_speaker.lower() or not cur_speaker) else self.foe_x
+            target_cx = self.main_x if (self.cut == 3 or cur_speaker not in FOE_SPEAKERS) else self.foe_x
             target_cy = 740.0
             blend = 0.85
         elif shot_type == "Close-up":
             z = 1.28
-            target_cx = self.main_x if (self.idx == 3 or "a" in cur_speaker.lower() or not cur_speaker) else self.foe_x
+            target_cx = self.main_x if (self.cut == 3 or cur_speaker not in FOE_SPEAKERS) else self.foe_x
             target_cy = 770.0
             blend = 0.75
         elif shot_type == "Low Angle":
@@ -2466,12 +2505,13 @@ class SceneVisuals:
         if cam_fx == "zoom_in_fast":
             fast_u = math.pow(u, 0.40)
             z = max(z, _lerp(1.0, 1.48, fast_u))
-            target_cx = self.main_x if self.idx in (3, 5) else (self.foe_x if "b" in cur_speaker.lower() else W / 2.0)
+            target_cx = self.main_x if self.cut in (3, 4, 5) else (self.foe_x if cur_speaker in FOE_SPEAKERS else W / 2.0)
             target_cy = 780.0
             blend = max(blend, 0.75)
 
         # 빌런 단독 클로즈업 가중치
-        is_villain_rant = (self.idx == 3 or "적반하장" in text or (cur_speaker in ("B", "빌런") and self.idx <= 3))
+        is_villain_rant = ((self.cut <= 2 if self.total == 6 else self.cut == 3) or "적반하장" in text
+                           or (cur_speaker in FOE_SPEAKERS and self.cut <= 3))
         if is_villain_rant and shot_type == "Medium":
             target_cx = self.foe_x
             target_cy = 820.0
@@ -2479,8 +2519,8 @@ class SceneVisuals:
             z = max(z, _lerp(1.12, 1.24, _ease(u)))
 
         # 주인공 참교육 선언 클로즈업 가중치
-        is_hero_call = (self.idx == 4 or any(k in text for k in ["본부", "투하", "특단", "요망"]))
-        if is_hero_call and self.idx < 5 and shot_type == "Medium":
+        is_hero_call = (self.cut == 4 or any(k in text for k in ["본부", "투하", "특단", "요망"]))
+        if is_hero_call and self.cut < 5 and shot_type == "Medium":
             target_cx = self.main_x
             target_cy = 790.0
             blend = max(blend, 0.70)
@@ -2493,7 +2533,7 @@ class SceneVisuals:
             amp = max(amp, 38.0 * shake_fade)
 
         hit = self.ctx["hit_t"]
-        is_impact_crush = (self.idx in (5, 6) and t <= 0.65) or (self.foe_pose in ("crushed", "fall") and t <= 0.65) or ("쿵" in text and t <= 0.65)
+        is_impact_crush = (self.cut in (5, 6) and t <= 0.65) or (self.foe_pose in ("crushed", "fall") and t <= 0.65) or ("쿵" in text and t <= 0.65)
         if is_impact_crush:
             shake_fade = max(0.0, 1.0 - t / 0.65)
             amp = max(amp, 34.0 * shake_fade)
@@ -2568,7 +2608,7 @@ class SceneVisuals:
             fx_radial_lines(d, foe_fig["head"], rnd, 26, 140, 1300, (30, 30, 40))
         elif self.main_pose == "run":
             fx_horizontal_lines(d, rnd, 14, (255, 255, 255))
-        elif self.idx == 4 or any(k in self.scene_text for k in ["본부", "투하"]):
+        elif self.cut == 4 or any(k in self.scene_text for k in ["본부", "투하"]):
             # 주인공 무전 교신 씬: 주인공 얼굴을 향한 강력한 웹툰 집중선 (Radial Focus Lines)
             fx_radial_lines(d, main_fig["head"], rnd, 28, 240, 1300, (40, 50, 80))
         elif self.main_pose == "angry":
@@ -2684,7 +2724,7 @@ class SceneVisuals:
         elif cur_ui == "question_mark":
             fx_question_mark_overlay(d_ui, head_a_screen[0], head_a_screen[1] - 25, t)
         elif cur_ui == "soul_leaving":
-            target_head = head_b_screen if self.idx in (5, 6) or self.foe_pose in ("crushed", "fall", "shock") else head_a_screen
+            target_head = head_b_screen if self.cut in (5, 6) or self.foe_pose in ("crushed", "fall", "shock") else head_a_screen
             fx_soul_leaving_overlay(d_ui, target_head[0], target_head[1] - 20, t)
 
         # 결정타 임팩트 타이포 (impact_keyword)

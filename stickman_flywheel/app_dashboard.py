@@ -42,7 +42,7 @@ list_bgm_tracks = getattr(module3_renderer, "list_bgm_tracks", lambda p=BGM_DIR:
 
 import module4_uploader
 from module4_uploader import generate_short_metadata, run_pipeline_step4
-from schemas import StickmanScriptOutput
+from schemas import SHOT_TYPES, StickmanScriptOutput, normalize_shot_type
 from fs_utils import atomic_write_json, atomic_write_text
 from scheduler_daemon import read_daemon_status
 
@@ -1300,16 +1300,16 @@ elif active_nav == "✍️ Step 2: 대본 검수":
         twist = st.text_area("결말 3초 반전 포인트 (사이다 Hook)", script.analysis.twist_point, key=f"{key}_twist", disabled=disabled, height=68)
 
         scene_inputs = []
-        shot_options = ["Wide", "Medium", "Close-up", "Extreme Close-up", "Low Angle"]
+        shot_options = list(SHOT_TYPES)
         cam_options = ["none", "zoom_in_fast", "camera_shake", "spotlight_darken"]
         ui_options = ["none", "anger_vein", "question_mark", "soul_leaving"]
-        sfx_options = ["none", "cricket_chirp", "record_scratch", "dramatic_thud", "punch_hit", "shock_beep", "whoosh", "pop", "thud", "ding", "boing"]
+        sfx_options = ["none", "cricket_chirp", "record_scratch", "dramatic_thud", "punch_hit", "shock_beep", "whoosh", "pop", "thud", "ding", "boing", "comic_punch", "car_horn", "glass_break"]
 
         for sc in script.scenes:
             n = sc.scene_number
-            cur_shot = getattr(sc, "shot_type", "Medium") or "Medium"
+            cur_shot = normalize_shot_type(getattr(sc, "shot_type", "Medium"))
             cur_pause = float(getattr(sc, "pause_after", 0.0) or 0.0)
-            is_silent = (n == 3) or not (sc.tts_narration or "").strip()
+            is_silent = not (sc.tts_narration or "").strip()
 
             expander_title = f"컷 {n} [{cur_shot}] · {sc.duration_sec}초 (+정적 {cur_pause:.1f}s) · {sc.subtitle_text or ('(무음 리액션)' if is_silent else '대사')}"
             with st.expander(expander_title, expanded=(n == 1 or n == 3)):
@@ -1326,7 +1326,7 @@ elif active_nav == "✍️ Step 2: 대본 검수":
                     subtitle = st.text_input("자막 텍스트 (subtitle_text)", sc.subtitle_text, key=f"{key}_s{n}", disabled=disabled)
                     impact = st.text_input("💥 임팩트 타이포 (impact_keyword, 2~4글자)", getattr(sc, "impact_keyword", "") or "", key=f"{key}_imp{n}", disabled=disabled, placeholder="예: 참교육, 팩폭 (강렬한 결정타 컷)")
                     
-                    shot_idx = shot_options.index(cur_shot) if cur_shot in shot_options else 1
+                    shot_idx = shot_options.index(cur_shot)
                     shot_type = st.selectbox("🎬 샷 앵글 (shot_type)", shot_options, index=shot_idx, key=f"{key}_shot{n}", disabled=disabled)
 
                     cur_props = ", ".join(getattr(sc, "visual_props", []) or [])
@@ -1343,12 +1343,13 @@ elif active_nav == "✍️ Step 2: 대본 검수":
                     ui_idx = ui_options.index(cur_ui) if cur_ui in ui_options else 0
                     ui_overlay = st.selectbox("💢 UI 오버레이 (ui_overlay)", ui_options, index=ui_idx, key=f"{key}_ui{n}", disabled=disabled)
 
-                    cur_sfx = getattr(sc, "sfx", "") or getattr(sc, "sfx_cue", "") or "none"
-                    # 정규화된 이름으로 매핑 시도
-                    sfx_idx = sfx_options.index(cur_sfx) if cur_sfx in sfx_options else 0
-                    sfx = st.selectbox("🔊 효과음 (sfx)", sfx_options, index=sfx_idx, key=f"{key}_sfx{n}", disabled=disabled)
+                    # sfx 필드만 편집 대상. LLM 이 쓴 값(comic_punch, car_horn 등)이 옵션에 없어도 보존되도록 옵션에 추가한다.
+                    # (구버전의 타임스탬프형 sfx_cue 는 건드리지 않는다)
+                    cur_sfx = (getattr(sc, "sfx", "") or "none").strip() or "none"
+                    row_sfx_options = sfx_options if cur_sfx in sfx_options else sfx_options + [cur_sfx]
+                    sfx = st.selectbox("🔊 효과음 (sfx)", row_sfx_options, index=row_sfx_options.index(cur_sfx), key=f"{key}_sfx{n}", disabled=disabled)
 
-                    pause_val = st.number_input("⏱️ 대사 후 정적 시간 (초, pause_after)", min_value=0.0, max_value=4.0, value=cur_pause, step=0.1, key=f"{key}_pause{n}", disabled=disabled)
+                    pause_val = st.number_input("⏱️ 대사 후 정적 시간 (초, pause_after)", min_value=0.0, max_value=max(4.0, cur_pause), value=cur_pause, step=0.1, key=f"{key}_pause{n}", disabled=disabled)
 
                 scene_inputs.append({
                     "n": n,
@@ -1380,8 +1381,7 @@ elif active_nav == "✍️ Step 2: 대본 검수":
                 scene["shot_type"] = item["shot_type"]
                 scene["camera_effect"] = item["camera_effect"]
                 scene["ui_overlay"] = item["ui_overlay"]
-                scene["sfx"] = item["sfx"]
-                scene["sfx_cue"] = item["sfx"] if item["sfx"] != "none" else ""
+                scene["sfx"] = "" if item["sfx"] == "none" else item["sfx"]
                 scene["pause_after"] = float(item["pause_after"])
                 scene["visual_props"] = [p.strip() for p in item["vprops"].split(",") if p.strip()]
             return StickmanScriptOutput.model_validate(data)
@@ -1721,7 +1721,7 @@ elif active_nav == "🎬 Step 4: 렌더링 & 배포":
                 with up_c1:
                     privacy_choice = st.selectbox(
                         "공개 범위",
-                        ["public (전체 공개)", "unlisted (일부 공개)", "private (비공개)"],
+                        ["private (비공개)", "unlisted (일부 공개)"],
                         index=0,
                         key="yt_privacy_select"
                     )

@@ -4,6 +4,27 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+SHOT_TYPES = ["Wide", "Medium", "Close-up", "Extreme Close-up", "Low Angle", "High Angle", "Over-the-shoulder"]
+
+
+def normalize_shot_type(raw: Optional[str]) -> str:
+    """LLM/구버전이 쓰는 'Wide Shot', 'Medium Shot', 'extreme close up' 등 표기를 SHOT_TYPES 의 정식 이름으로 통일."""
+    low = (raw or "").strip().lower().replace("-", " ").replace("_", " ")
+    if "extreme" in low:
+        return "Extreme Close-up"
+    if "close" in low:
+        return "Close-up"
+    if "low" in low:
+        return "Low Angle"
+    if "high" in low:
+        return "High Angle"
+    if "over" in low and "shoulder" in low:
+        return "Over-the-shoulder"
+    if "wide" in low:
+        return "Wide"
+    return "Medium"
+
+
 class SceneBeat(BaseModel):
     scene_number: int = Field(description="씬 번호 (1부터 시작, 1~6컷 콘티)")
     duration_sec: int = Field(default=4, ge=1, le=8, description="씬 길이 (초 단위, 무음 리액션은 1~3초, 일반 씬 3~6초)")
