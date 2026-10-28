@@ -623,7 +623,11 @@ if "flash" in st.session_state:
 if "flash_err" in st.session_state:
     st.error(st.session_state.pop("flash_err"))
 
-# 1. 단일 진실 공급원(SSOT) 확립
+# 1. 단일 진실 공급원(SSOT) 확립 및 강제 선택 타깃(target_episode_to_select) 감지
+target_to_select = st.session_state.pop("target_episode_to_select", None)
+if target_to_select:
+    st.session_state["active_ep_id"] = target_to_select
+
 if "active_ep_id" not in st.session_state or not st.session_state["active_ep_id"]:
     st.session_state["active_ep_id"] = "20261026_181819"
 
@@ -644,13 +648,19 @@ def get_status(ep_id: str) -> str:
 
 format_func = lambda x: f"[{get_status(x)}] {x}.json"
 
-# 인덱스 사전 계산
+# 인덱스 및 활성 에피소드 동기화
 current_id = st.session_state.get("active_ep_id", "20261026_181819")
 if current_id not in options and options:
-    default_idx = 0
-    st.session_state["active_ep_id"] = options[0]
-else:
-    default_idx = options.index(current_id) if current_id in options else 0
+    current_id = options[0]
+    st.session_state["active_ep_id"] = current_id
+
+# 핵심: Streamlit의 st.selectbox는 key="ep_selector_widget"가 session_state에 이미 있으면
+# index 매개변수를 무시하고 기존 세션 상태를 반환합니다.
+# 따라서 active_ep_id가 바뀌었거나 강제 지정된 경우, selectbox 위젯 세션 상태를 직접 동기화합니다.
+if current_id in options:
+    st.session_state["ep_selector_widget"] = current_id
+
+default_idx = options.index(current_id) if current_id in options else 0
 
 def on_ep_change():
     st.session_state["active_ep_id"] = st.session_state["ep_selector_widget"]
@@ -895,6 +905,8 @@ with tab_step1:
             if rsvp_status.get("status") == "approved":
                 ep_id = rsvp_status['episode_id']
                 st.session_state["active_ep_id"] = ep_id
+                st.session_state["ep_selector_widget"] = ep_id
+                st.session_state["target_episode_to_select"] = ep_id
                 st.session_state["flash"] = rsvp_status.get("message", "승인 완료!")
                 st.balloons()
                 st.rerun()
@@ -972,8 +984,11 @@ with tab_step1:
                     if btn_sim:
                         res = cal_mgr_inst.simulate_rsvp_approval(c_no)
                         if res.get("status") == "approved":
-                            st.session_state["active_ep_id"] = cand_ep_id
-                            st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료!"
+                            target_id = res.get("episode_id") or cand_ep_id
+                            st.session_state["active_ep_id"] = target_id
+                            st.session_state["ep_selector_widget"] = target_id
+                            st.session_state["target_episode_to_select"] = target_id
+                            st.session_state["flash"] = f"🎉 [후보 {c_no}] '{c.get('episode_title')}' 승인 채택 완료! 대본 검수(Step 2)로 즉시 동기화되었습니다."
                             st.balloons()
                             st.rerun()
     else:
@@ -1104,6 +1119,8 @@ with tab_step1:
                         new_script = run_pipeline_step1()
                         ep_id = new_script.episode_id
                         st.session_state["active_ep_id"] = ep_id
+                        st.session_state["ep_selector_widget"] = ep_id
+                        st.session_state["target_episode_to_select"] = ep_id
                         st.session_state["flash"] = f"🎉 새로운 대본 생성 완료: {new_script.episode_title}"
                         st.rerun()
                     except Exception as e:
@@ -1118,6 +1135,8 @@ with tab_step1:
                 if timeout_res.get("triggered"):
                     ep_id = timeout_res['episode_id']
                     st.session_state["active_ep_id"] = ep_id
+                    st.session_state["ep_selector_widget"] = ep_id
+                    st.session_state["target_episode_to_select"] = ep_id
                     st.session_state["flash"] = timeout_res.get("message", "16:00 타임아웃 자동 승인 성공!")
                     st.balloons()
                     st.rerun()
@@ -1225,6 +1244,8 @@ with tab_step2:
                         mgr = CalendarManager()
                         result = mgr.schedule_episode_pipeline(edited, target_date)
                     st.session_state["active_ep_id"] = result.episode_id
+                    st.session_state["ep_selector_widget"] = result.episode_id
+                    st.session_state["target_episode_to_select"] = result.episode_id
                     st.session_state["flash"] = (
                         f"🎉 승인 완료 ({'Dry-Run' if mgr.dry_run else 'Google Calendar'}) · "
                         f"렌더 이벤트: {result.calendar_render_event_id} / "
