@@ -12,6 +12,7 @@ from google.genai import types
 from googleapiclient.discovery import build
 
 from schemas import StickmanScriptOutput
+from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
 
@@ -273,7 +274,7 @@ class EmotionalReverseScriptGenerator:
         script.hashtags = [h if h.startswith("#") else f"#{h}" for h in script.hashtags]
 
         path = PENDING_DIR / f"{script.episode_id}.json"
-        path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(path, script.model_dump_json(indent=2))
         print(f"[Saved] {path}")
         return script
 

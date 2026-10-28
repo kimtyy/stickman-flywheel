@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from schemas import StickmanScriptOutput
+from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
 
@@ -156,6 +157,8 @@ class YouTubeUploader:
                 from google.auth.transport.requests import Request
 
                 creds.refresh(Request())
+                if token_path:
+                    atomic_write_text(token_path, creds.to_json())
             elif not creds and oauth_path:
                 from google_auth_oauthlib.flow import InstalledAppFlow
 
@@ -164,7 +167,7 @@ class YouTubeUploader:
                 # 토큰 저장
                 save_token = CONFIG_DIR / "youtube_token.json"
                 save_token.parent.mkdir(parents=True, exist_ok=True)
-                save_token.write_text(creds.to_json(), encoding="utf-8")
+                atomic_write_text(save_token, creds.to_json())
 
             if creds:
                 self.service = build("youtube", "v3", credentials=creds, cache_discovery=False)
@@ -265,21 +268,20 @@ class YouTubeUploader:
                 "dry_run": False,
             }
         except Exception as e:
-            print(f"[YouTube Upload] API 업로드 중 오류 발생 ({e}) -> 시뮬레이션 상태로 보고")
-            sim_id = f"fallback_{uuid.uuid4().hex[:11]}"
+            # 실제 업로드 실패는 시뮬레이션 성공으로 위장하지 않고 failed 로 명확히 보고한다.
+            print(f"[YouTube Upload] API 업로드 실패: {e}")
             return {
-                "status": "simulated",
-                "message": f"API 호출 오류로 인한 시뮬레이션 전환: {e}",
-                "video_id": sim_id,
-                "video_url": f"https://youtube.com/shorts/{sim_id}",
+                "status": "failed",
+                "message": f"유튜브 업로드 실패: {e}",
+                "error": f"{type(e).__name__}: {e}",
+                "video_id": None,
+                "video_url": None,
                 "title": metadata["title"],
-                "description": metadata["description"],
-                "tags": metadata["tags"],
                 "privacy_status": privacy_status,
                 "file_name": video_path.name,
                 "file_size_mb": file_size_mb,
-                "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "dry_run": True,
+                "failed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "dry_run": False,
             }
 
 
@@ -308,14 +310,18 @@ def run_pipeline_step4(
     uploader = YouTubeUploader()
     result = uploader.upload_video(target_video, metadata, privacy_status=privacy_status)
 
-    # 4. 승인 JSON에 업로드 결과 기록
+    # 4. 실패 시 업로드 식별자를 기록하지 않고 호출자(스케줄러/대시보드)에게 그대로 반환
+    if result.get("status") == "failed":
+        return result
+
+    # 5. 승인 JSON에 업로드 결과 기록
     json_path = APPROVED_DIR / f"{script.episode_id}.json"
     if json_path.exists():
         try:
             # schemas.py 수정 없이 안전하게 calendar_upload_event_id 등에 업로드 식별자 보존
-            if not script.calendar_upload_event_id:
+            if not script.calendar_upload_event_id or script.calendar_upload_event_id.startswith("yt-"):
                 script.calendar_upload_event_id = f"yt-{result['video_id']}"
-            json_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+            atomic_write_text(json_path, script.model_dump_json(indent=2))
         except Exception as e:
             print(f"[Step 4] JSON 상태 기록 실패: {e}")
 

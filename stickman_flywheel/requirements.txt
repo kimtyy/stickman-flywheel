@@ -13,3 +13,4 @@ gTTS
 opencv-python-headless
 scipy
 numpy
+apscheduler

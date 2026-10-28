@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import threading
 import uuid
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from schemas import StickmanScriptOutput
+from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
 
@@ -38,7 +40,7 @@ def get_autopilot_config() -> Dict[str, Any]:
             "last_checked": datetime.now().isoformat(),
             "last_auto_approved_episode": None,
         }
-        AUTOPILOT_CONFIG_FILE.write_text(json.dumps(default_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(AUTOPILOT_CONFIG_FILE, default_cfg)
         return default_cfg
     try:
         return json.loads(AUTOPILOT_CONFIG_FILE.read_text(encoding="utf-8"))
@@ -51,7 +53,7 @@ def set_autopilot_enabled(enabled: bool) -> None:
     cfg = get_autopilot_config()
     cfg["enabled"] = enabled
     cfg["last_updated"] = datetime.now().isoformat()
-    AUTOPILOT_CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(AUTOPILOT_CONFIG_FILE, cfg)
 
 
 def is_autopilot_enabled() -> bool:
@@ -67,6 +69,38 @@ def get_golden_time_queue() -> List[Dict[str, Any]]:
         return json.loads(GOLDEN_TIME_QUEUE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return []
+
+
+_QUEUE_LOCK = threading.Lock()
+
+
+def enqueue_golden_time(item: Dict[str, Any]) -> None:
+    """대기열에 에피소드를 등록(동일 episode_id 는 교체)."""
+    with _QUEUE_LOCK:
+        queue = [q for q in get_golden_time_queue() if q.get("episode_id") != item.get("episode_id")]
+        queue.append(item)
+        atomic_write_json(GOLDEN_TIME_QUEUE_FILE, queue)
+
+
+def update_golden_queue_item(episode_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
+    """대기열 항목 상태/필드 갱신. 항목이 없으면 None."""
+    with _QUEUE_LOCK:
+        queue = get_golden_time_queue()
+        target = next((q for q in queue if q.get("episode_id") == episode_id), None)
+        if target is None:
+            return None
+        target.update(fields)
+        target["updated_at"] = datetime.now().isoformat()
+        atomic_write_json(GOLDEN_TIME_QUEUE_FILE, queue)
+        return target
+
+
+def parse_serving_date(data: Dict[str, Any]) -> Optional[date]:
+    """서빙 파일의 serving_date 를 date 로 파싱. 없거나 형식 오류면 None."""
+    try:
+        return datetime.strptime(str(data.get("serving_date", "")), "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 class CalendarManager:
@@ -227,7 +261,7 @@ class CalendarManager:
             # candidate의 script 객체를 반드시 PENDING_DIR에 파일로 영구 저장 보장
             cand_p_path = PENDING_DIR / f"{script.episode_id}.json"
             if not cand_p_path.exists() and not (APPROVED_DIR / f"{script.episode_id}.json").exists():
-                cand_p_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+                atomic_write_text(cand_p_path, script.model_dump_json(indent=2))
 
             served_candidates.append({
                 "candidate_no": c_no,
@@ -272,7 +306,7 @@ class CalendarManager:
             "candidates": served_candidates,
         }
 
-        CANDIDATE_SERVING_FILE.write_text(json.dumps(serving_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(CANDIDATE_SERVING_FILE, serving_data)
         mode = "Live" if (not self.dry_run and self.service) else "Dry-Run"
         print(f"[CalendarBuffet:{mode}] 3대 후보 대본(09:00 알림) 및 15:00 자동승인 예고 리마인더 구글 캘린더 등록 완료")
         return serving_data
@@ -313,7 +347,10 @@ class CalendarManager:
                 try:
                     ev = self.service.events().get(calendarId=self.calendar_id, eventId=ev_id).execute()
                     attendees = ev.get("attendees", [])
+                    invited = (data.get("attendee_email") or "").strip().lower()
                     for att in attendees:
+                        if invited and (att.get("email") or "").strip().lower() != invited:
+                            continue
                         if att.get("responseStatus") == "accepted":
                             cand["rsvp_status"] = "accepted"
                             winner_candidate = cand
@@ -339,7 +376,7 @@ class CalendarManager:
             script = None
             if pending_path.exists():
                 script = load_script(pending_path)
-                approved_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+                atomic_write_text(approved_path, script.model_dump_json(indent=2))
                 pending_path.unlink(missing_ok=True)
             elif approved_path.exists():
                 script = load_script(approved_path)
@@ -375,7 +412,21 @@ class CalendarManager:
             data["status"] = "approved"
             data["approved_episode_id"] = ep_id
             data["approved_candidate_no"] = c_no
-            CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            data["approved_by"] = "rsvp"
+            atomic_write_json(CANDIDATE_SERVING_FILE, data)
+
+            serving_day = parse_serving_date(data) or date.today()
+            enqueue_golden_time({
+                "episode_id": ep_id,
+                "episode_title": winner_candidate.get("episode_title", ep_id),
+                "candidate_no": c_no,
+                "predicted_hit_rate": winner_candidate.get("predicted_hit_rate"),
+                "approved_at": datetime.now().isoformat(),
+                "approved_by": "rsvp",
+                "scheduled_publish_time": f"{serving_day}T17:30:00+09:00",
+                "status": "ready_for_golden_time_upload",
+                "attempts": 0,
+            })
 
             return {
                 "has_serving": True,
@@ -402,7 +453,7 @@ class CalendarManager:
         for cand in data.get("candidates", []):
             if cand.get("candidate_no") == candidate_no:
                 cand["rsvp_status"] = "accepted"
-        CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(CANDIDATE_SERVING_FILE, data)
         return self.check_rsvp_approvals()
 
     def check_and_trigger_timeout_auto_approval(self, force_now: bool = False) -> Dict[str, Any]:
@@ -427,6 +478,17 @@ class CalendarManager:
             }
 
         now = datetime.now()
+        # 서빙 날짜 검증: 오늘자 서빙만 자동 승인 대상 (어제 이전 잔존 파일로 오승인 방지)
+        serving_day = parse_serving_date(data)
+        if not force_now:
+            if serving_day is None:
+                return {"triggered": False, "reason": "서빙 파일의 serving_date 가 없거나 형식이 올바르지 않아 자동 승인을 건너뜁니다."}
+            if serving_day != now.date():
+                return {
+                    "triggered": False,
+                    "stale_serving": True,
+                    "reason": f"서빙 날짜({serving_day})가 오늘({now.date()})이 아니어서 자동 승인하지 않습니다."
+                }
         # 16:00 타임아웃 도달 검사 (force_now=True 시 즉시 강제 테스트 가능)
         if not force_now and now.time() < time(16, 0):
             return {
@@ -454,7 +516,7 @@ class CalendarManager:
 
         if pending_path.exists():
             script = load_script(pending_path)
-            approved_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+            atomic_write_text(approved_path, script.model_dump_json(indent=2))
             pending_path.unlink(missing_ok=True)
         elif approved_path.exists():
             script = load_script(approved_path)
@@ -520,11 +582,10 @@ class CalendarManager:
         data["golden_time_scheduled"] = "17:30"
         data["golden_event_id"] = golden_event_id
         data["auto_approved_at"] = datetime.now().isoformat()
-        CANDIDATE_SERVING_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(CANDIDATE_SERVING_FILE, data)
 
         # 퇴근길 골든타임 큐에 등록
-        queue = get_golden_time_queue()
-        queue_item = {
+        enqueue_golden_time({
             "episode_id": ep_id,
             "episode_title": winner["episode_title"],
             "candidate_no": c_no,
@@ -533,18 +594,15 @@ class CalendarManager:
             "approved_by": "autopilot_timeout_1600",
             "scheduled_publish_time": f"{target_date_obj}T17:30:00+09:00",
             "status": "ready_for_golden_time_upload",
+            "attempts": 0,
             "traffic_target": "퇴근길 쇼츠 트래픽 피크 (17:30 ~ 18:00)"
-        }
-        # 중복 방지
-        queue = [q for q in queue if q.get("episode_id") != ep_id]
-        queue.append(queue_item)
-        GOLDEN_TIME_QUEUE_FILE.write_text(json.dumps(queue, indent=2, ensure_ascii=False), encoding="utf-8")
+        })
 
         # 오토파일럿 설정에 기록
         cfg = get_autopilot_config()
         cfg["last_checked"] = datetime.now().isoformat()
         cfg["last_auto_approved_episode"] = ep_id
-        AUTOPILOT_CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(AUTOPILOT_CONFIG_FILE, cfg)
 
         return {
             "triggered": True,
@@ -604,7 +662,7 @@ class CalendarManager:
             feedback_start + timedelta(minutes=15), "3",
         )
 
-        json_path.write_text(script_data.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(json_path, script_data.model_dump_json(indent=2))
         pending_path = PENDING_DIR / f"{script_data.episode_id}.json"
         if pending_path.exists():
             pending_path.unlink()

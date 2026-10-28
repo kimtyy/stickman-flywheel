@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
+from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
 
@@ -41,10 +42,7 @@ class AnalyticsEngine:
                     "사회·직장 얌체 갑질 참교육": 1.15
                 }
             }
-            FEEDBACK_RULES_FILE.write_text(
-                json.dumps(default_rules, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
+            atomic_write_json(FEEDBACK_RULES_FILE, default_rules)
 
     def get_feedback_rules(self) -> Dict[str, Any]:
         """현재 가동 중인 자율 학습 피드백 룰 반환."""
@@ -140,7 +138,7 @@ class AnalyticsEngine:
                 for c in metrics["weekly"]["category_performance"]
             }
         }
-        FEEDBACK_RULES_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(FEEDBACK_RULES_FILE, data)
         return {"success": True, "updated_rules_count": len(new_rules), "rules": new_rules}
 
     def generate_b2b_executive_report(self) -> str:

@@ -9,6 +9,7 @@ import os
 import random
 import re
 import shutil
+import hashlib
 import subprocess
 import tempfile
 import wave
@@ -25,6 +26,7 @@ from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 
 from schemas import SceneBeat, StickmanScriptOutput
+from fs_utils import atomic_write_json, atomic_write_text
 
 load_dotenv()
 
@@ -1852,12 +1854,22 @@ def make_background(color, pose: str, scene_text: str = "", setting_type: str = 
         return img
 
 
+# 상단 타이틀 바 경계 및 말풍선 레이아웃 상수 (타이틀 바 하단 + 안전 마진 이하로 말풍선이 내려오지 않도록 SSOT 로 관리)
+TITLE_BAR_TOP, TITLE_BAR_BOTTOM = 30, 175
+BUBBLE_SAFE_MARGIN = 20
+BUBBLE_TOP_MIN = max(TITLE_BAR_BOTTOM + BUBBLE_SAFE_MARGIN, 220)
+BUBBLE_GAP = 14
+BUBBLE_EDGE_PAD = 40
+BUBBLE_CENTER_X = {"A": 280, "B": 720}
+BUBBLE_TAIL_HEAD = {"A": (300, 800), "B": (680, 800)}
+
+
 def make_overlay(title: str, idx: int, total: int, subtitle: str, action: str) -> Image.Image:
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
 
     # 1. 상단 타이틀 배너 (컴팩트 & 하이엔드: 30 ~ 175px 높이로 최적화하여 하단 말풍선 공간 넉넉히 확보)
-    banner_y0, banner_y1 = 30, 175
+    banner_y0, banner_y1 = TITLE_BAR_TOP, TITLE_BAR_BOTTOM
     d.rounded_rectangle((40, banner_y0, W - 40, banner_y1), radius=30, fill=(18, 18, 28, 235),
                         outline=(255, 214, 10, 255), width=5)
 
@@ -2103,8 +2115,11 @@ def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
                 target: Optional[Tuple[float, float]] = None,
                 y_offset: int = 0) -> int:
     """
-    화자별 말풍선 렌더링 (좌/우 화자 분리, 꼬리표 방향 대칭, Y축 충돌 방지).
-    반환값: 렌더링된 말풍선 박스 하단 Y 좌표(y1).
+    화자별 말풍선/해설 박스 렌더링.
+    - 모든 박스는 타이틀 바 하단 + 안전 마진(BUBBLE_TOP_MIN) 아래에서 시작.
+    - y_offset > 0 이면 해당 Y(앞선 박스 하단) 아래 BUBBLE_GAP 만큼 띄워 배치.
+    - A: 중심 X=280 / B: 중심 X=720, 좌우 화면 밖(40px 패딩)으로 나가지 않음.
+    반환값: 렌더링된 박스 하단 Y 좌표(y1). 텍스트가 없으면 y_offset 그대로 반환.
     """
     raw_text = (text or "").strip()
     if not raw_text:
@@ -2113,104 +2128,71 @@ def draw_bubble(d: ImageDraw.ImageDraw, speaker: str, text: str,
     spk_raw = (speaker or "").strip()
     spk_u = spk_raw.upper()
 
-    # 화자 유형 분류 (A: 주인공, B: 빌런, 해설)
     is_narration = not spk_raw or spk_raw in ("해설", "내레이션", "전체", "상황")
     is_a = not is_narration and (spk_u in ("A", "주인공", "남자") or ("A" in spk_u and "B" not in spk_u))
-    is_b = not is_narration and (spk_u in ("B", "빌런", "상대", "여자") or ("B" in spk_u and "A" not in spk_u))
+    is_b = not is_narration and not is_a and (spk_u in ("B", "빌런", "상대", "여자") or "B" in spk_u)
+    if not is_narration and not is_a and not is_b:
+        is_a = True  # 미분류 화자(C 등)는 좌측 풍선으로 폴백
 
-    # 하위 호환 target 파라미터 처리
     if target is not None:
         if is_b:
             head_b = target
         else:
             head_a = target
 
-    # 1. 폰트 크기 및 최대 줄바꿈 폭
-    if is_narration:
-        max_wrap_w = 760
-        chosen_size = 40
-    else:
-        # 좌/우 분리 배치를 위한 폭 (최대 420px)
-        max_wrap_w = 420
-        chosen_size = 42
-
+    # 1. 폰트/줄바꿈 폭: 좌우 풍선이 서로 겹치지 않도록 캐릭터 풍선은 최대 440px
+    chosen_size = 40 if is_narration else 42
+    pad_v, pad_h = (18, 32) if is_narration else (20, 28)
+    max_box_w = (W - 2 * BUBBLE_EDGE_PAD) if is_narration else 440
     font = get_font(chosen_size)
-    lines = wrap_text(raw_text, font, max_wrap_w)
+    lines = wrap_text(raw_text, font, max_box_w - 2 * pad_h)
     if len(lines) > 3:
         lines = lines[:3]
         lines[-1] = lines[-1][:-1] + "…"
 
     line_h = int(chosen_size * 1.32)
-    max_text_w = max(font.getlength(ln) for ln in lines) if lines else 200
-
-    # 2. 박스 크기 및 패딩 계산
-    pad_v = 18 if is_narration else 20
-    pad_h = 32 if is_narration else 28
+    max_text_w = max((font.getlength(ln) for ln in lines), default=200)
     bh = pad_v * 2 + len(lines) * line_h
-    bw = min(880 if is_narration else 480, max(int(max_text_w + pad_h * 2), 340))
+    bw = min(max_box_w, max(int(max_text_w + pad_h * 2), 300))
 
-    # 3. Y축 위치 및 상하 간격 (충돌 방지 오프셋 적용)
-    if y_offset > 0:
-        y0 = y_offset + 14  # 상단 해설 바로 아래로 14px 간격 배치
-    else:
-        y0 = 192 if is_narration else 198
+    # 2. Y축: 타이틀 바 안전 마진 이후, 앞선 박스가 있으면 그 아래
+    y0 = max(BUBBLE_TOP_MIN, y_offset + BUBBLE_GAP if y_offset > 0 else 0)
     y1 = y0 + bh
 
-    # 4. X축 좌표 및 테두리/꼬리표 스타일 (좌우 대칭 분리)
-    if is_a:
-        # [좌측 캐릭터: 주인공] 중심 X: 275 (250~300 사이), 블루(#3B82F6), 좌측 하단 꼬리표
-        center_x = 275
-        x0 = max(35, center_x - bw // 2)
-        x1 = x0 + bw
-        target_head = head_a or (360, 780)
-        border_color = (59, 130, 246)  # Blue #3B82F6
-        border_width = 6
-        box_fill = (255, 255, 255)
-    elif is_b:
-        # [우측 캐릭터: 빌런] 중심 X: 640 (600~650 사이), 레드(#EF4444), 우측 하단 꼬리표
-        center_x = 640
-        x0 = center_x - bw // 2
-        x1 = min(W - 35, x0 + bw)
-        x0 = x1 - bw
-        target_head = head_b or (720, 780)
-        border_color = (239, 68, 68)  # Red #EF4444
-        border_width = 6
-        box_fill = (255, 255, 255)
+    # 3. X축/스타일: 중심 고정 후 좌우 패딩 클램프
+    tail_head = None
+    if is_narration:
+        x0 = (W - bw) // 2
+        border_color, border_width, box_fill = (245, 158, 11), 5, (255, 251, 235)
     else:
-        # [해설] 화면 중앙 배치, 웜 아이보리(#FFFBEB), 앰버 골드(#F59E0B) 테두리, 꼬리 없음
-        x0 = int(W / 2 - bw / 2)
-        x1 = x0 + bw
-        target_head = None
-        border_color = (245, 158, 11)  # Amber Gold #F59E0B
-        border_width = 5
-        box_fill = (255, 251, 235)
+        key = "A" if is_a else "B"
+        x0 = BUBBLE_CENTER_X[key] - bw // 2
+        x0 = min(max(x0, BUBBLE_EDGE_PAD), W - BUBBLE_EDGE_PAD - bw)
+        tail_head = (head_a if is_a else head_b) or BUBBLE_TAIL_HEAD[key]
+        border_color = (59, 130, 246) if is_a else (239, 68, 68)
+        border_width, box_fill = 6, (255, 255, 255)
+    x1 = x0 + bw
 
-    # 5. 말풍선 꼬리 그리기 (좌/우 캐릭터 머리를 향하도록 설정)
-    if target_head is not None and target_head[1] > y1 + 10:
-        if is_a:
-            tx_base = min(max(head_a[0] - 30, x0 + 45), x1 - 45)
-            target_pt = (head_a[0] - 15, min(head_a[1] - 40, y1 + 190))
-        else:
-            tx_base = min(max(head_b[0] - 10, x0 + 45), x1 - 45)
-            target_pt = (head_b[0] + 15, min(head_b[1] - 40, y1 + 190))
-        d.polygon([(tx_base - 22, y1 - 2), (tx_base + 22, y1 - 2), target_pt], fill=box_fill, outline=border_color)
+    # 4. 꼬리표: A 는 박스 하단 좌측, B 는 하단 우측에서 캐릭터 머리 방향 삼각형
+    has_tail = tail_head is not None and tail_head[1] > y1 + 10
+    if has_tail:
+        base_x = x0 + 70 if is_a else x1 - 70
+        base_x = min(max(base_x, x0 + 45), x1 - 45)
+        tip_x = min(max(tail_head[0], BUBBLE_EDGE_PAD), W - BUBBLE_EDGE_PAD)
+        tip_y = min(tail_head[1] - 40, y1 + 190)
+        d.polygon([(base_x - 22, y1 - 2), (base_x + 22, y1 - 2), (tip_x, tip_y)],
+                  fill=box_fill, outline=border_color)
 
-    # 6. 말풍선 본체 라운디드 사각형
+    # 5. 본체
     d.rounded_rectangle((x0, y0, x1, y1), radius=24, fill=box_fill, outline=border_color, width=border_width)
+    if has_tail:
+        d.rectangle((base_x - 18, y1 - 5, base_x + 18, y1 + 2), fill=box_fill)
 
-    # 꼬리 연결부 매꿈
-    if target_head is not None and target_head[1] > y1 + 10:
-        d.rectangle((tx_base - 18, y1 - 5, tx_base + 18, y1 + 2), fill=box_fill)
-
-    # 7. 텍스트 렌더링
+    # 6. 텍스트
     text_color = (25, 25, 35)
     for i, ln in enumerate(lines):
         ly = y0 + pad_v + i * line_h
-        if is_narration:
-            d.text((W / 2, ly), ln, font=font, fill=text_color, anchor="mt")
-        else:
-            line_start_x = x0 + int((bw - font.getlength(ln)) / 2)
-            d.text((line_start_x, ly), ln, font=font, fill=text_color)
+        d.text(((x0 + x1) / 2, ly), ln, font=font, fill=text_color, anchor="mt")
 
     return y1
 
@@ -2548,15 +2530,20 @@ class SceneVisuals:
             narr_segs = [s for s in active_segs if not s.get("speaker") or s.get("speaker") in ("해설", "내레이션", "전체", "상황")]
             char_segs = [s for s in active_segs if s not in narr_segs]
 
+            # 해설은 최상단(타이틀 바 안전 마진 아래), 캐릭터 풍선은 해설 하단 아래에서 좌/우 열별로 스택
             cur_y_offset = 0
             for n_seg in narr_segs:
-                y_bot = draw_bubble(d_ui, n_seg.get("speaker", ""), n_seg.get("text", ""),
-                                    head_a=head_a_screen, head_b=head_b_screen, y_offset=cur_y_offset)
-                cur_y_offset = max(cur_y_offset, y_bot)
+                cur_y_offset = max(cur_y_offset, draw_bubble(
+                    d_ui, n_seg.get("speaker", ""), n_seg.get("text", ""),
+                    head_a=head_a_screen, head_b=head_b_screen, y_offset=cur_y_offset))
 
+            col_y = {"A": cur_y_offset, "B": cur_y_offset}
             for c_seg in char_segs:
-                draw_bubble(d_ui, c_seg.get("speaker", ""), c_seg.get("text", ""),
-                            head_a=head_a_screen, head_b=head_b_screen, y_offset=cur_y_offset)
+                spk_u = (c_seg.get("speaker") or "").strip().upper()
+                col = "B" if (spk_u in ("B", "빌런", "상대", "여자") or ("B" in spk_u and "A" not in spk_u)) else "A"
+                col_y[col] = max(col_y[col], draw_bubble(
+                    d_ui, c_seg.get("speaker", ""), c_seg.get("text", ""),
+                    head_a=head_a_screen, head_b=head_b_screen, y_offset=col_y[col]))
 
         # 상단 타이틀 배너 / 하단 자막 오버레이
         img.paste(self.top, (0, 0), self.top)
@@ -2764,6 +2751,48 @@ def mix_bgm_with_auto_ducking(
     return output_path
 
 
+def text_sha256(*parts: str) -> str:
+    """오디오 캐시 키용 텍스트 SHA256 (대본이 바뀌면 키도 바뀌어 이전 음성이 재사용되지 않는다)."""
+    h = hashlib.sha256()
+    for p in parts:
+        h.update((p or "").encode("utf-8"))
+        h.update(b"")
+    return h.hexdigest()
+
+
+def wav_duration_sec(path: Path) -> float:
+    try:
+        with wave.open(str(path), "rb") as wf:
+            return wf.getnframes() / float(wf.getframerate() or 1)
+    except Exception:
+        return 0.0
+
+
+def audio_cache_valid(audio: Path, digest: str, expected_sec: Optional[float] = None) -> bool:
+    """캐시 오디오가 현재 텍스트와 일치하는지 검증.
+    사이드카(.sha256)가 있으면 해시 비교, 없는 레거시 파일은 (길이 검증 통과 시) 현재 해시로 채택한다."""
+    sidecar = audio.with_suffix(".sha256")
+    if sidecar.exists():
+        try:
+            return sidecar.read_text(encoding="utf-8").strip() == digest
+        except OSError:
+            return False
+    if expected_sec is not None and abs(wav_duration_sec(audio) - expected_sec) > 0.1:
+        return False
+    try:
+        sidecar.write_text(digest, encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
+def write_audio_digest(audio: Path, digest: str) -> None:
+    try:
+        audio.with_suffix(".sha256").write_text(digest, encoding="utf-8")
+    except OSError:
+        pass
+
+
 # =====================================================================
 # 8. 메인 렌더러
 # =====================================================================
@@ -2900,7 +2929,8 @@ class StickmanShortRenderer:
         cached_wav = None
         if self.current_episode_id:
             ep_audio_dir = AUDIO_DIR / self.current_episode_id
-            cached_wav = ep_audio_dir / f"{tag}_{speaker}.wav"
+            # 캐시 키: 태그 + 화자 + (화자|정제 텍스트) SHA256 → 대본 수정 시 자동 무효화
+            cached_wav = ep_audio_dir / f"{tag}_{speaker}_{text_sha256(speaker, cleaned)[:12]}.wav"
             if cached_wav.exists() and cached_wav.stat().st_size > 500:
                 pcm = self._decode_pcm(cached_wav)
                 if pcm and len(pcm) > 0:
@@ -3010,7 +3040,9 @@ class StickmanShortRenderer:
         existing_scene_wav = None
         if self.current_episode_id:
             ep_scene_wav = AUDIO_DIR / self.current_episode_id / f"scene_{idx:02d}.wav"
-            if ep_scene_wav.exists() and ep_scene_wav.stat().st_size > 1000:
+            scene_digest = text_sha256(scene.tts_narration)
+            if (ep_scene_wav.exists() and ep_scene_wav.stat().st_size > 1000
+                    and audio_cache_valid(ep_scene_wav, scene_digest)):
                 existing_scene_wav = ep_scene_wav
 
         if existing_scene_wav:
@@ -3175,7 +3207,10 @@ class StickmanShortRenderer:
             # 1. 완벽한 연속 마스터 오디오 WAV 저장 (씬 간 오디오 글리치/삑사리 원천 차단)
             master_wav = tmp / "master_audio.wav"
             existing_master = ep_audio_dir / "master_audio.wav"
-            if existing_master.exists() and existing_master.stat().st_size > 10000:
+            master_digest = text_sha256(*(s_.tts_narration for s_ in script.scenes))
+            if (existing_master.exists() and existing_master.stat().st_size > 10000
+                    and audio_cache_valid(existing_master, master_digest,
+                                          expected_sec=len(master_audio_pcm) / SR)):
                 print(f"[Renderer] 기존 마스터 오디오 트랙 복원 및 매핑: {existing_master.name}")
                 shutil.copy2(existing_master, master_wav)
             else:
@@ -3185,7 +3220,8 @@ class StickmanShortRenderer:
                     wf.setframerate(SR)
                     wf.writeframes(master_audio_pcm.tobytes())
                 try:
-                    shutil.copy2(master_wav, ep_audio_dir / "master_audio.wav")
+                    shutil.copy2(master_wav, existing_master)
+                    write_audio_digest(existing_master, master_digest)
                 except Exception:
                     pass
 
@@ -3239,7 +3275,7 @@ class StickmanShortRenderer:
         script.rendered_video_path = str(out_path)
         json_path = APPROVED_DIR / f"{script.episode_id}.json"
         if json_path.exists():
-            json_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+            atomic_write_text(json_path, script.model_dump_json(indent=2))
         report("렌더링 완료", 1.0)
         return out_path
 

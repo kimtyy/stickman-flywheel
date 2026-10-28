@@ -43,6 +43,8 @@ list_bgm_tracks = getattr(module3_renderer, "list_bgm_tracks", lambda p=BGM_DIR:
 import module4_uploader
 from module4_uploader import generate_short_metadata, run_pipeline_step4
 from schemas import StickmanScriptOutput
+from fs_utils import atomic_write_json, atomic_write_text
+from scheduler_daemon import read_daemon_status
 
 # ==============================================================================
 # 1. 페이지 설정 및 Google Stitch 하이엔드 다크 AI 스튜디오 테마 (CSS)
@@ -647,8 +649,16 @@ target_to_select = st.session_state.pop("target_episode_to_select", None)
 if target_to_select:
     st.session_state["active_ep_id"] = target_to_select
 
+# URL Query Parameter 연동 (?ep=20261028_050155)
+try:
+    qp_ep = st.query_params.get("ep")
+    if qp_ep:
+        st.session_state["active_ep_id"] = qp_ep
+except Exception:
+    pass
+
 if "active_ep_id" not in st.session_state or not st.session_state["active_ep_id"]:
-    st.session_state["active_ep_id"] = "20261026_181819"
+    st.session_state["active_ep_id"] = "20261028_050155"
 
 # 2. 전체 에피소드 통합 목록 구성 (사이드바 대신 본문 상단에서 직관적으로 선택)
 pending_list = list_files(PENDING_DIR)
@@ -668,7 +678,7 @@ def get_status(ep_id: str) -> str:
 format_func = lambda x: f"[{get_status(x)}] {x}.json"
 
 # 인덱스 및 활성 에피소드 동기화
-current_id = st.session_state.get("active_ep_id", "20261026_181819")
+current_id = st.session_state.get("active_ep_id", "20261028_050155")
 if current_id not in options and options:
     current_id = options[0]
     st.session_state["active_ep_id"] = current_id
@@ -758,8 +768,27 @@ NAV_TABS = [
     "📊 Step 5: 성과 분석 & 피드백",
 ]
 
+# URL Query Parameter 탭 연동 (?tab=4 또는 ?tab=step4)
+try:
+    qp_tab = st.query_params.get("tab")
+    if qp_tab:
+        t_low = str(qp_tab).lower()
+        if t_low in ("4", "step4", "render"):
+            st.session_state["active_nav_tab"] = NAV_TABS[3]
+        elif t_low in ("1", "step1"):
+            st.session_state["active_nav_tab"] = NAV_TABS[0]
+        elif t_low in ("2", "step2"):
+            st.session_state["active_nav_tab"] = NAV_TABS[1]
+        elif t_low in ("3", "step3"):
+            st.session_state["active_nav_tab"] = NAV_TABS[2]
+        elif t_low in ("5", "step5"):
+            st.session_state["active_nav_tab"] = NAV_TABS[4]
+except Exception:
+    pass
+
 if "active_nav_tab" not in st.session_state or st.session_state["active_nav_tab"] not in NAV_TABS:
-    st.session_state["active_nav_tab"] = NAV_TABS[0]
+    # 20261028_050155 렌더링 결과 확인을 위해 Step 4를 기본 활성화
+    st.session_state["active_nav_tab"] = NAV_TABS[3]
 
 # BGM 및 오디오 설정 기본값 및 세션 동기화 (Step 3 & Step 4 공통 바인딩)
 bgm_tracks = list_bgm_tracks(BGM_DIR)
@@ -1208,6 +1237,11 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
                     st.info(timeout_res.get("reason", "타임아웃 조건 미충족 또는 이미 승인 완료"))
 
         st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+        daemon_st = read_daemon_status()
+        if daemon_st.get("alive"):
+            st.success(f"🟢 스케줄러 데몬 가동 중 · 마지막 하트비트 {daemon_st['age_sec']}초 전 · 최근 작업: {daemon_st.get('last_job', '-')} ({daemon_st.get('last_job_result', '-')})")
+        else:
+            st.error("🔴 스케줄러 데몬이 응답하지 않습니다. 터미널에서 `python scheduler_daemon.py` 를 실행해 무인 루프를 가동하세요.")
         golden_queue = get_golden_time_queue()
         queue_count = len(golden_queue)
         btn_view_queue = st.button(f"🌇 골든타임(17:30) 자동 예약 배포 대기열 ({queue_count}건)", use_container_width=True)
@@ -1215,7 +1249,8 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
             if golden_queue:
                 st.markdown("##### 🌇 퇴근길 골든타임(17:30~18:00) 예약 배포 대기열 현황")
                 for q in golden_queue:
-                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 적중률: **{q.get('predicted_hit_rate')}%** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}`")
+                    err = f" · 사유: `{q['last_error']}`" if q.get("last_error") else ""
+                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 적중률: **{q.get('predicted_hit_rate')}%** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}` · 시도: {q.get('attempts', 0)}{err}")
             else:
                 st.info("현재 골든타임 대기열에 등록된 영상이 없습니다.")
 
@@ -1307,7 +1342,7 @@ elif active_nav == "✍️ Step 2: 대본 검수":
             if approve:
                 try:
                     edited = build_edited()
-                    file_path.write_text(edited.model_dump_json(indent=2), encoding="utf-8")
+                    atomic_write_text(file_path, edited.model_dump_json(indent=2))
                     with st.spinner("캘린더 등록 및 상태 갱신 중..."):
                         mgr = CalendarManager()
                         result = mgr.schedule_episode_pipeline(edited, target_date)
@@ -1598,7 +1633,9 @@ elif active_nav == "🎬 Step 4: 렌더링 & 배포":
                                 video_path=Path(video_file),
                                 privacy_status=priv
                             )
-                            if upload_res.get("dry_run"):
+                            if upload_res.get("status") == "failed":
+                                st.error(f"❌ {upload_res['message']}")
+                            elif upload_res.get("dry_run"):
                                 st.success(f"✅ {upload_res['message']}")
                                 st.info(f"🔗 [시뮬레이션 쇼츠 링크]({upload_res['video_url']}) · 영상 ID: `{upload_res['video_id']}` ({upload_res['file_size_mb']}MB)")
                             else:
