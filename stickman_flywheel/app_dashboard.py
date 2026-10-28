@@ -878,7 +878,14 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
     else:
         flight_progress = 1.0
 
-    st.markdown("""
+    daemon_st = read_daemon_status()
+    daemon_badge = (
+        f'<span style="font-size: 0.78rem; background: rgba(16, 185, 129, 0.15); border: 1.5px solid rgba(16, 185, 129, 0.4); color: #34D399; padding: 5px 12px; border-radius: 8px; font-weight: 800;">🟢 데몬 가동 중 ({daemon_st["age_sec"]}s 전)</span>'
+        if daemon_st.get("alive")
+        else '<span style="font-size: 0.78rem; background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.4); color: #F87171; padding: 5px 12px; border-radius: 8px; font-weight: 800;">🔴 데몬 응답 없음 (수동 대기)</span>'
+    )
+
+    st.markdown(f"""
         <div class="stitch-card" style="padding: 18px 22px; margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -891,6 +898,9 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
                             [09:00 서빙] ➔ [모바일 RSVP 터치] ➔ [16:00 타임아웃 1위 자동승인] ➔ [17:30 골든타임 무인 발행]
                         </div>
                     </div>
+                </div>
+                <div>
+                    {daemon_badge}
                 </div>
             </div>
     """, unsafe_allow_html=True)
