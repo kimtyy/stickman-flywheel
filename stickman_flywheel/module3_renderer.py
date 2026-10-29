@@ -791,8 +791,101 @@ def draw_capsule(d: ImageDraw.ImageDraw, p1: Tuple[float, float], p2: Tuple[floa
     d.ellipse((p2[0] - ri, p2[1] - ri, p2[0] + ri, p2[1] + ri), fill=in_color)
 
 
+# ---- 3D 입체 표현 헬퍼: 구형 광택 머리 스프라이트 / 원통형 팔다리 / 그라데이션 후디 ----
+_SPHERE_CACHE: Dict[Tuple[int, str], Image.Image] = {}
+HEAD_PALETTE = {  # (밝은 면, 그림자 면)
+    "A": ((255, 255, 255), (176, 186, 210)),
+    "B": ((255, 238, 236), (206, 146, 150)),
+}
+
+
+def head_sphere_sprite(R: float, char_type: str) -> Image.Image:
+    """램버트 확산광 + 림 라이트 + 스페큘러 + 창문 반사로 셰이딩한 광택 구형 머리 (RGBA, 슈퍼샘플링 안티앨리어싱)."""
+    Ri = int(round(R))
+    key = (Ri, char_type)
+    if key in _SPHERE_CACHE:
+        return _SPHERE_CACHE[key]
+    pad, ss = 10, 3
+    S = 2 * (Ri + pad)
+    N = S * ss
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32)
+    c = (N - 1) / 2.0
+    rr = Ri * ss
+    nx, ny = (xs - c) / rr, (ys - c) / rr
+    r2 = nx * nx + ny * ny
+    inside = r2 <= 1.0
+    nz = np.sqrt(np.clip(1.0 - r2, 0.0, 1.0))
+    L = np.array([-0.45, -0.55, 0.70], dtype=np.float32)
+    L /= np.linalg.norm(L)
+    diff = np.clip(nx * L[0] + ny * L[1] + nz * L[2], 0.0, 1.0)
+    light, dark = (np.array(v, dtype=np.float32) for v in HEAD_PALETTE[char_type])
+    tone = (0.10 + 0.90 * diff ** 0.85)[..., None]
+    col = dark + (light - dark) * tone
+    rim = (np.clip(nx * 0.55 + ny * 0.65, 0.0, 1.0) ** 2 * (1.0 - nz) ** 0.7)[..., None]  # 우하단 반사광
+    col = col + rim * np.array([14, 22, 38], dtype=np.float32)
+    Hv = L + np.array([0, 0, 1], dtype=np.float32)
+    Hv /= np.linalg.norm(Hv)
+    spec = np.clip(nx * Hv[0] + ny * Hv[1] + nz * Hv[2], 0.0, 1.0) ** 56
+    col = col + spec[..., None] * 255.0
+    ex = ((nx + 0.40) / 0.30) ** 2 + ((ny + 0.46) / 0.15) ** 2  # 좌상단 창문형 광택
+    win = (np.clip(1.0 - ex, 0.0, 1.0) ** 0.55 * 0.92)[..., None]
+    col = col + (255.0 - col) * win
+    ring = inside & (r2 > (1.0 - 0.105) ** 2)  # 굵은 웹툰 외곽선
+    col[ring] = (15, 15, 25)
+    rgba = np.zeros((N, N, 4), dtype=np.uint8)
+    rgba[..., :3] = np.clip(col, 0, 255).astype(np.uint8)
+    rgba[..., 3] = np.where(inside, 255, 0).astype(np.uint8)
+    sprite = Image.fromarray(rgba, "RGBA").resize((S, S), Image.LANCZOS)
+    _SPHERE_CACHE[key] = sprite
+    return sprite
+
+
+def gradient_poly(img: Image.Image, pts: List[Tuple[float, float]], c_light, c_dark,
+                  direction: Tuple[float, float] = (-0.8, -0.6), outline=None, outline_w: int = 4,
+                  ellipse: bool = False) -> None:
+    """다각형/타원을 방향성 그라데이션(조명 쪽이 밝음)으로 채워 천의 입체감을 낸다."""
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    x0, y0 = int(min(xs)) - 2, int(min(ys)) - 2
+    x1, y1 = int(max(xs)) + 3, int(max(ys)) + 3
+    w, h = x1 - x0, y1 - y0
+    if w <= 2 or h <= 2:
+        return
+    mask = Image.new("L", (w, h), 0)
+    md = ImageDraw.Draw(mask)
+    local = [(p[0] - x0, p[1] - y0) for p in pts]
+    if ellipse:
+        md.ellipse((local[0][0], local[0][1], local[1][0], local[1][1]), fill=255)
+    else:
+        md.polygon(local, fill=255)
+    gy, gx = np.mgrid[0:h, 0:w].astype(np.float32)
+    u = (gx / w - 0.5) * direction[0] + (gy / h - 0.5) * direction[1]
+    u = np.clip(0.5 - u / (abs(direction[0]) + abs(direction[1]) + 1e-6), 0.0, 1.0)[..., None]
+    lo, hi = np.array(c_light, dtype=np.float32), np.array(c_dark, dtype=np.float32)
+    arr = (lo + (hi - lo) * u).astype(np.uint8)
+    img.paste(Image.fromarray(arr, "RGB"), (x0, y0), mask)
+    if outline is not None:
+        dd = ImageDraw.Draw(img)
+        if ellipse:
+            dd.ellipse((pts[0][0], pts[0][1], pts[1][0], pts[1][1]), outline=outline, width=outline_w)
+        else:
+            dd.line(pts + [pts[0]], fill=outline, width=outline_w, joint="curve")
+
+
+def draw_tube(d: ImageDraw.ImageDraw, pts: List[Tuple[float, float]], lw: int, out_c, body_c, hi_c) -> None:
+    """외곽선 + 본체 + 좌상단 하이라이트 3중 패스로 원통형(소매/바지/팔다리) 입체감 표현."""
+    ow = lw + 6
+    d.line(pts, fill=out_c, width=ow, joint="curve")
+    for q in (pts[0], pts[-1]):
+        d.ellipse((q[0] - ow / 2, q[1] - ow / 2, q[0] + ow / 2, q[1] + ow / 2), fill=out_c)
+    d.line(pts, fill=body_c, width=lw, joint="curve")
+    for q in (pts[0], pts[-1]):
+        d.ellipse((q[0] - lw / 2, q[1] - lw / 2, q[0] + lw / 2, q[1] + lw / 2), fill=body_c)
+    off = lw * 0.2
+    d.line([(x - off, y - off) for x, y in pts], fill=hi_c, width=max(3, int(lw * 0.26)), joint="curve")
+
+
 def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
-                char_type: str = "A", t: float = 0.0) -> None:
+                char_type: str = "A", t: float = 0.0, img: Optional[Image.Image] = None) -> None:
     # 1. 바닥 그림자 (웹툰 특유의 부드러운 타원형 접지 그림자)
     hx, hy = fig["hip"][0], fig["floor_y"]
     d.ellipse((hx - 120, hy - 14, hx + 120, hy + 16), fill=(45, 42, 52, 180) if len(color) == 4 else (65, 60, 75))
@@ -802,14 +895,17 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
     lw = int(LINE_W)
 
     # 2. 다리 (골반-무릎-발목 3점 제어점 기반 부드러운 2차 베지어 곡선 + 둥근 캡)
+    if char_type == "A":
+        tube_out, tube_body, tube_hi = (12, 12, 18), (46, 50, 62), (108, 118, 140)  # 다크 차콜 후디/조거 소재
+    else:
+        tube_out, tube_body, tube_hi = (110, 14, 24), (205, 48, 58), (255, 160, 160)
     for leg in fig["legs"]:
         hip_pt, knee_pt, ankle_pt, foot_pt = leg[0], leg[1], leg[2], leg[3]
         leg_curve = quadratic_bezier_curve(hip_pt, knee_pt, ankle_pt, n=16)
-        d.line(leg_curve, fill=limb_color, width=lw, joint="curve")
-        d.line([ankle_pt, foot_pt], fill=limb_color, width=lw, joint="curve")
-        r = lw / 2.0
-        d.ellipse((hip_pt[0] - r, hip_pt[1] - r, hip_pt[0] + r, hip_pt[1] + r), fill=limb_color)
-        d.ellipse((foot_pt[0] - r, foot_pt[1] - r, foot_pt[0] + r, foot_pt[1] + r), fill=limb_color)
+        draw_tube(d, leg_curve + [foot_pt], lw, tube_out, tube_body, tube_hi)
+        # 신발: 밝은 스니커즈 (바닥과 대비되는 입체 덩어리)
+        fx_, fy_ = foot_pt
+        d.ellipse((fx_ - lw * 0.9, fy_ - lw * 0.55, fx_ + lw * 1.1, fy_ + lw * 0.65), fill=(235, 238, 245), outline=tube_out, width=4)
 
     # 3. 몸통 (토르소 일체형 선 및 캐릭터 의상)
     hip_pt, shoulder_pt = fig["hip"], fig["shoulder"]
@@ -826,17 +922,31 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
             (sx - 52, sy - 4), (sx + 52, sy - 4),
             (hip_x + 34, hip_y + 4), (hip_x - 34, hip_y + 4)
         ]
-        d.polygon(hoodie_pts, fill=(40, 44, 52), outline=limb_color)
-        # 캥거루 앞주머니 (Kangaroo pocket)
-        d.polygon([
+        pocket_pts = [
             (hip_x - 24, hip_y - 28), (hip_x + 24, hip_y - 28),
             (hip_x + 30, hip_y + 2), (hip_x - 30, hip_y + 2)
-        ], fill=(30, 34, 40), outline=limb_color)
-        # 후드 끈 (Hoodie drawstrings)
-        d.line([(sx - 8, sy + 6), (sx - 8, sy + 26)], fill=(210, 215, 225), width=3)
-        d.line([(sx + 8, sy + 6), (sx + 8, sy + 26)], fill=(210, 215, 225), width=3)
-        # 후드 깃/카울 (Hood cowl)
-        d.ellipse((sx - 32, sy - 14, sx + 32, sy + 14), fill=(32, 35, 42), outline=limb_color, width=3)
+        ]
+        if img is not None:
+            # 3D: 좌상단 조명 그라데이션 + 림라이트 + 옷 주름 + 입체 후드 카울
+            gradient_poly(img, hoodie_pts, (84, 92, 110), (22, 24, 31), direction=(-1.0, -0.5), outline=(12, 12, 18), outline_w=5)
+            d.line([(sx - 50, sy - 2), (hip_x - 32, hip_y + 2)], fill=(132, 144, 170), width=3)  # 림라이트
+            for k in (0.30, 0.55, 0.78):  # 옷 주름
+                fx0, fy0 = sx + (hip_x - sx) * k - 22, sy + (hip_y - sy) * k
+                d.arc((fx0, fy0 - 12, fx0 + 44, fy0 + 12), 20, 160, fill=(18, 19, 25), width=3)
+            gradient_poly(img, pocket_pts, (58, 63, 78), (20, 22, 28), direction=(-0.8, -0.8), outline=(12, 12, 18), outline_w=4)
+            d.line([(hip_x - 22, hip_y - 26), (hip_x + 22, hip_y - 26)], fill=(120, 130, 154), width=2)
+            d.line([(sx - 8, sy + 8), (sx - 8, sy + 30)], fill=(236, 240, 248), width=4)
+            d.line([(sx + 8, sy + 8), (sx + 8, sy + 30)], fill=(236, 240, 248), width=4)
+            d.ellipse((sx - 12, sy + 28, sx - 4, sy + 36), fill=(236, 240, 248), outline=(12, 12, 18))
+            d.ellipse((sx + 4, sy + 28, sx + 12, sy + 36), fill=(236, 240, 248), outline=(12, 12, 18))
+            gradient_poly(img, [(sx - 34, sy - 16), (sx + 34, sy + 16)], (96, 106, 126), (24, 26, 33),
+                          direction=(-0.8, -1.0), outline=(12, 12, 18), outline_w=4, ellipse=True)
+        else:
+            d.polygon(hoodie_pts, fill=(40, 44, 52), outline=limb_color)
+            d.polygon(pocket_pts, fill=(30, 34, 40), outline=limb_color)
+            d.line([(sx - 8, sy + 6), (sx - 8, sy + 26)], fill=(210, 215, 225), width=3)
+            d.line([(sx + 8, sy + 6), (sx + 8, sy + 26)], fill=(210, 215, 225), width=3)
+            d.ellipse((sx - 32, sy - 14, sx + 32, sy + 14), fill=(32, 35, 42), outline=limb_color, width=3)
     else:
         # 빌런 B: 얄미운 네온 오렌지 포인트 상의
         tank_pts = [
@@ -852,31 +962,35 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
     for arm in fig["arms"]:
         sh_pt, elbow_pt, wrist_pt = arm[0], arm[1], arm[2]
         arm_curve = quadratic_bezier_curve(sh_pt, elbow_pt, wrist_pt, n=16)
-        d.line(arm_curve, fill=limb_color, width=lw, joint="curve")
-        r = lw / 2.0
-        d.ellipse((sh_pt[0] - r, sh_pt[1] - r, sh_pt[0] + r, sh_pt[1] + r), fill=limb_color)
-        # 손 디테일: 둥근 손 끝
+        draw_tube(d, arm_curve, lw, tube_out, tube_body, tube_hi)
+        # 손: 밝은 구형 (소매와 확실히 구분되는 입체 덩어리)
         wx, wy = wrist_pt
-        rf = lw * 0.75
-        d.ellipse((wx - rf, wy - rf, wx + rf, wy + rf), fill=limb_color)
+        rf = lw * 0.78
+        d.ellipse((wx - rf - 3, wy - rf - 3, wx + rf + 3, wy + rf + 3), fill=tube_out)
+        d.ellipse((wx - rf, wy - rf, wx + rf, wy + rf), fill=(244, 246, 252) if char_type == "A" else (255, 214, 205))
+        d.ellipse((wx - rf * 0.6, wy - rf * 0.65, wx - rf * 0.1, wy - rf * 0.2), fill=(255, 255, 255))
 
     # 5. 머리 기본 원 및 입체 음영 (3D Shading & Specular Jelly Highlight)
     cx, cy = fig["head"]
     R = fig["R"]
 
-    # 머리 기본 원 채움
-    d.ellipse((cx - R, cy - R, cx + R, cy + R), fill=head_fill)
-
-    # 우하단 초승달 모양 입체 그림자
-    shadow_fill = (222, 226, 238) if char_type == "A" else (245, 214, 214)
-    d.chord((cx - R + 4, cy - R + 4, cx + R - 2, cy + R - 2), start=340, end=110, fill=shadow_fill)
-
-    # 웹툰 굵은 블랙 외곽선
-    d.ellipse((cx - R, cy - R, cx + R, cy + R), outline=outline_color, width=9)
-
-    # 좌상단 영롱한 젤리광 하이라이트 (Specular Jelly Capsule)
-    d.ellipse((cx - R * 0.54, cy - R * 0.54, cx - R * 0.26, cy - R * 0.34), fill=(255, 255, 255))
-    d.ellipse((cx - R * 0.22, cy - R * 0.52, cx - R * 0.12, cy - R * 0.42), fill=(255, 255, 255))
+    fp = fig["face"]
+    if img is not None:
+        if char_type == "A":
+            # 머리 뒤로 두툼하게 솟은 다크 차콜 후드 (구형 머리 뒤에서 초승달 형태로 보임)
+            gradient_poly(img, [(cx - R * 1.22, cy - R * 1.06), (cx + R * 0.66, cy + R * 1.12)],
+                          (86, 94, 114), (26, 28, 36), direction=(-1.0, -0.7), outline=(12, 12, 18),
+                          outline_w=7, ellipse=True)
+        # 3D: 램버트 확산광 + 림라이트 + 스페큘러 + 창문 반사로 셰이딩한 광택 구형 머리
+        sprite = head_sphere_sprite(R, char_type)
+        img.paste(sprite, (int(round(cx - sprite.width / 2)), int(round(cy - sprite.height / 2))), sprite)
+    else:
+        d.ellipse((cx - R, cy - R, cx + R, cy + R), fill=head_fill)
+        shadow_fill = (222, 226, 238) if char_type == "A" else (245, 214, 214)
+        d.chord((cx - R + 4, cy - R + 4, cx + R - 2, cy + R - 2), start=340, end=110, fill=shadow_fill)
+        d.ellipse((cx - R, cy - R, cx + R, cy + R), outline=outline_color, width=9)
+        d.ellipse((cx - R * 0.54, cy - R * 0.54, cx - R * 0.26, cy - R * 0.34), fill=(255, 255, 255))
+        d.ellipse((cx - R * 0.22, cy - R * 0.52, cx - R * 0.12, cy - R * 0.42), fill=(255, 255, 255))
 
     # 생동감 넘치는 핑크 홍조 (Cheek Blush)
     blush_color = (255, 175, 185)
@@ -884,10 +998,15 @@ def draw_figure(d: ImageDraw.ImageDraw, fig: Dict, p: Dict, color, head_fill,
     d.ellipse((cx + R * 0.26, cy + R * 0.14, cx + R * 0.54, cy + R * 0.28), fill=blush_color)
 
     # 캐릭터별 헤어 / 액세서리 파츠 드로잉
-    fp = fig["face"]
     if char_type == "A":
-        # 주인공 빼딱맨: 머리 뒤 후드 실루엣 (Dark Charcoal Hood back)
-        d.arc((cx - R - 6, cy - R - 6, cx + R + 6, cy + R + 12), start=140, end=400, fill=(35, 38, 46), width=12)
+        if img is None:
+            d.arc((cx - R - 6, cy - R - 6, cx + R + 6, cy + R + 12), start=140, end=400, fill=(35, 38, 46), width=12)
+        else:
+            # 이마를 감싸는 후드 앞단(챙) — 구형 머리 위에 얹혀 입체감을 강조
+            d.arc((cx - R * 0.98, cy - R * 0.98, cx + R * 0.98, cy + R * 0.98), start=200, end=330,
+                  fill=(40, 44, 54), width=int(R * 0.12))
+            d.arc((cx - R * 0.98, cy - R * 0.98, cx + R * 0.98, cy + R * 0.98), start=205, end=300,
+                  fill=(96, 106, 128), width=4)
     else:
         # 빌런 B: 얄미운 노란색/주황색 삐죽머리 파츠 (머리 위로 솟은 스파이크 헤어)
         spikes = [
@@ -940,17 +1059,19 @@ def _draw_face(d: ImageDraw.ImageDraw, fp, R: float, p: Dict, char_type: str = "
             elif eyes == "X":
                 line((ex - 0.12, ey - 0.12), (ex + 0.12, ey + 0.12))
                 line((ex - 0.12, ey + 0.12), (ex + 0.12, ey - 0.12))
-            elif eyes == "squint":
-                line((ex - 0.14, ey), (ex + 0.14, ey), width=lw + 3)
             elif char_type == "A":
                 # 주인공 빼딱맨: 반쯤 감긴 시니컬한 눈 (half-closed cynical eyes)
-                circle(ex, ey, 0.15, fill=(255, 255, 255), outline=black, width=lw)
-                circle(ex + 0.02, ey + 0.02, 0.09, fill=black)
-                x_e, y_e = fp(ex, ey)
-                r_e = 0.15 * R
-                # 위쪽 눈꺼풀이 절반 내려앉은 시니컬한 눈매
-                d.chord((x_e - r_e - 1, y_e - r_e - 1, x_e + r_e + 1, y_e + r_e + 1), start=180, end=360, fill=(255, 255, 255), outline=black, width=lw)
-                d.line([fp(ex - 0.18, ey - 0.02), fp(ex + 0.18, ey - 0.02)], fill=black, width=lw + 1)
+                circle(ex, ey + 0.02, 0.17, fill=(255, 255, 255), outline=black, width=lw)
+                circle(ex + 0.05, ey + 0.07, 0.095, fill=black)        # 슬쩍 아래로 내리깐 시선
+                x_e, y_e = fp(ex, ey + 0.02)
+                r_e = 0.17 * R
+                # 위쪽 절반을 눈꺼풀(머리 음영색)로 덮어 확연히 '반쯤 감긴' 시니컬한 눈 + 굵은 눈꺼풀 선
+                d.pieslice((x_e - r_e, y_e - r_e, x_e + r_e, y_e + r_e), start=180, end=360, fill=(214, 220, 236))
+                a, b = fp(ex - 0.20, ey + 0.03), fp(ex + 0.20, ey - 0.02)
+                d.line([a, b], fill=black, width=lw + 3)
+                d.arc((x_e - r_e, y_e - r_e, x_e + r_e, y_e + r_e), start=180, end=360, fill=black, width=lw)
+            elif eyes == "squint":
+                line((ex - 0.14, ey), (ex + 0.14, ey), width=lw + 3)
             elif eyes == "dot":
                 circle(ex, ey, 0.10, fill=black)
             else:  # angry
@@ -963,8 +1084,8 @@ def _draw_face(d: ImageDraw.ImageDraw, fp, R: float, p: Dict, char_type: str = "
             line((-0.06, -0.46), (0.32, -0.22), width=lw + 3)
             line((0.36, -0.22), (0.76, -0.46), width=lw + 3)
             # 참교육 번뜩이는 안광 (4각 반짝이 별)
-            gx, gy = fp(0.66, -0.16)
-            for r1, r2 in ((20, 6), (15, 4)):
+            gx, gy = fp(0.80, -0.44)  # 두 번째 눈을 가리지 않도록 눈 위쪽 모서리에 배치
+            for r1, r2 in ((17, 5), (12, 3)):
                 star_pts = [
                     (gx, gy - r1), (gx + r2, gy - r2), (gx + r1, gy), (gx + r2, gy + r2),
                     (gx, gy + r1), (gx - r2, gy + r2), (gx - r1, gy), (gx - r2, gy - r2)
@@ -2387,6 +2508,14 @@ class SceneVisuals:
                     "end": (j + 1) * sdur
                 } for j, (spk, txt) in enumerate(segs)]
 
+        # 하단 자막 노출 구간: 실제 TTS 타임라인(오디오 샘플 길이 기준)의 첫 발화 시작 ~ 마지막 발화 종료에 1:1 매칭.
+        # 무음 리액션 컷(타임라인 없음)은 컷 전체 동안 자막을 유지한다.
+        if self.timeline:
+            self.sub_start = max(0.0, min(s["start"] for s in self.timeline) - 0.05)
+            self.sub_end = min(dur, max(s["end"] for s in self.timeline) + 0.15)
+        else:
+            self.sub_start, self.sub_end = 0.0, dur
+
         # 항상 2인 등장: 주인공 A(좌측 360)와 상대방/빌런 B(우측 720) 구도
         self.main_x = MAIN_X
         self.foe_x = FOE_X
@@ -2503,8 +2632,10 @@ class SceneVisuals:
 
         # 2. 다이내믹 카메라 연출 (camera_effect)
         if cam_fx == "zoom_in_fast":
+            # 샷 기본 줌(예: Extreme Close-up 1.48)에 고정되지 않도록 항상 1.0 → 목표 배율로 급격히 밀고 들어간다
             fast_u = math.pow(u, 0.40)
-            z = max(z, _lerp(1.0, 1.48, fast_u))
+            zoom_goal = 1.70 if shot_type == "Extreme Close-up" else (1.55 if shot_type in ("Close-up", "Low Angle") else 1.48)
+            z = _lerp(1.0, zoom_goal, fast_u)
             target_cx = self.main_x if self.cut in (3, 4, 5) else (self.foe_x if cur_speaker in FOE_SPEAKERS else W / 2.0)
             target_cy = 780.0
             blend = max(blend, 0.75)
@@ -2619,8 +2750,8 @@ class SceneVisuals:
             fx_horizontal_lines(d, rnd, 8, (255, 255, 255))
 
         # --- 스틱맨 캐릭터 드로잉 (빌런 B & 주인공 A)
-        draw_figure(d, foe_fig, foe_p, (170, 30, 40), (255, 235, 235), char_type="B", t=ta)
-        draw_figure(d, main_fig, main_p, (20, 20, 30), (255, 255, 255), char_type="A", t=ta)
+        draw_figure(d, foe_fig, foe_p, (170, 30, 40), (255, 235, 235), char_type="B", t=ta, img=img)
+        draw_figure(d, main_fig, main_p, (20, 20, 30), (255, 255, 255), char_type="A", t=ta, img=img)
 
         # --- 상황별 소품 (Props) 자동 렌더링
         draw_props(d, main_fig, foe_fig, self.scene_text, self.main_pose, self.foe_pose, ta, setting_type=self.episode_setting)
@@ -2756,13 +2887,15 @@ class SceneVisuals:
 
         # 상단 타이틀 배너 / 하단 자막 오버레이
         img.paste(self.top, (0, 0), self.top)
-        if t < 0.2:
-            s = 1.25 - 0.25 * _ease(t / 0.2)
-            bw, bh = int(W * s), int(self.bottom.height * s)
-            scaled = self.bottom.resize((bw, bh), Image.BILINEAR)
-            img.paste(scaled, (int(W / 2 - bw / 2), int(1480 + self.bottom.height / 2 - bh / 2)), scaled)
-        else:
-            img.paste(self.bottom, (0, 1480), self.bottom)
+        if self.sub_start <= t <= self.sub_end:
+            tt = t - self.sub_start
+            if tt < 0.2:
+                s = 1.25 - 0.25 * _ease(tt / 0.2)
+                bw, bh = int(W * s), int(self.bottom.height * s)
+                scaled = self.bottom.resize((bw, bh), Image.BILINEAR)
+                img.paste(scaled, (int(W / 2 - bw / 2), int(1480 + self.bottom.height / 2 - bh / 2)), scaled)
+            else:
+                img.paste(self.bottom, (0, 1480), self.bottom)
         return img
 
 
