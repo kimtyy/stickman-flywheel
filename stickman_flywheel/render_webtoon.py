@@ -1,11 +1,12 @@
-"""웹툰형(인스타툰) 쇼츠 프로토타입: 이미지 생성 모델 6컷 + 켄 번스 모션 + 자막/말풍선 합성.
+"""웹툰형(인스타툰) 쇼츠 메인 렌더러: 빼딱맨 원본 앵커 + 이미지 생성 모델 6컷 + 켄 번스 모션 + 자막/말풍선 합성.
 
-기존 렌더러/스테이지 코드는 건드리지 않는 독립 스크립트다. 오디오는 audio_timeline 의 확정 타임라인을 그대로 쓴다.
+  from render_webtoon import render_webtoon
+  res = render_webtoon(script)            # 확정 오디오 타임라인(audio_timeline)을 쓰고 pipeline_outputs/rendered/<ep>.mp4 저장
 
-  python render_webtoon_prototype.py <episode_id> [--redo-sheets] [--redo-cuts] [--suffix _webtoon]
+  python render_webtoon.py <episode_id> [--redo-sheets] [--redo-cuts] [--suffix _webtoon]
 
-산출물: pipeline_outputs/webtoon/<episode_id>/{sheet_A.png, sheet_B.png, shots.json, cut_1..6.png, consistency.json}
-        pipeline_outputs/rendered/<episode_id>_webtoon.mp4
+산출물: pipeline_outputs/webtoon/<ep>/{shots.json, cut_N.png, checks.json, consistency.json, report.json}
+        pipeline_outputs/webtoon/_brand/{sheet_A.png, sheet_B.png}  (에피소드 간 공유되는 고정 캐스트 시트)
 """
 from __future__ import annotations
 
@@ -18,8 +19,9 @@ import random
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -33,6 +35,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 from fs_utils import atomic_write_json  # noqa: E402
 
 OUT_ROOT = BASE_DIR / "pipeline_outputs" / "webtoon"
+BRAND_DIR = OUT_ROOT / "_brand"
 W, H, FPS = 1080, 1920, 30
 
 IMAGE_MODELS = [os.getenv("WEBTOON_IMAGE_MODEL", "gemini-3.1-flash-image"), "gemini-2.5-flash-image"]
@@ -49,7 +52,8 @@ ANCHOR_PATH = BASE_DIR / "assets" / "brand" / "character_a_anchor.png"   # 빼�
 CHAR_A = ("CHARACTER A ('Ppaedakman', the channel mascot and protagonist): draw him EXACTLY as in the attached MASCOT ORIGINAL image "
           "(the first reference): a large perfectly round flat WHITE head with a bold black outline, heavy-lidded smug eyes, one angled "
           "sharp eyebrow, a long sly one-sided smirk, a plain flat WHITE slim body and thin limbs with bold black outlines (no clothing "
-          "details, no glossy shading). Same face and same line style in every panel; only the expression and pose change.")
+          "details, no glossy shading). Render A as a flat 2D illustration with solid colors, no 3D shading, no gradients, no highlights "
+          "on the head or body (even if the rest of the scene has soft shading). Same face and same line style in every panel; only the expression and pose change.")
 CHAR_B = ("CHARACTER B (the villain customer): a stocky stick-figure-like man with a large round PINK-WHITE head, a few spiky ORANGE "
           "hair tufts on top, thick angry eyebrows, wide smug mouth, wearing a bright RED jacket/outfit. Always the same face, same red outfit.")
 SHEET_PROMPT = ("Character reference sheet on a plain light-grey background: the SAME character shown three times side by side "
@@ -132,9 +136,10 @@ def make_sheets(client, out: Path, redo: bool) -> Dict[str, Image.Image]:
     if not ANCHOR_PATH.exists():
         raise FileNotFoundError(f"빼딱맨 앵커 이미지가 없습니다: {ANCHOR_PATH}")
     anchor = Image.open(ANCHOR_PATH).convert("RGB")
+    BRAND_DIR.mkdir(parents=True, exist_ok=True)
     sheets: Dict[str, Image.Image] = {"ANCHOR": anchor}
     for cid, desc in (("A", CHAR_A), ("B", CHAR_B)):
-        p = out / f"sheet_{cid}.png"
+        p = BRAND_DIR / f"sheet_{cid}.png"      # 고정 캐스트: 한 번 만든 시트를 모든 에피소드가 재사용(캐릭터 일관성+시간 절약)
         if p.exists() and not redo:
             sheets[cid] = Image.open(p).convert("RGB")
             continue
@@ -181,21 +186,27 @@ class CutCheck(BaseModel):
     a_ok: Optional[bool] = Field(default=None, description="A 가 보이면 원본 마스코트와 같은 캐릭터인가(둥근 흰 머리, 무거운 눈꺼풀, 각진 눈썹, 비스듬한 스머크, 하얀 몸). 미등장이면 null")
     b_ok: Optional[bool] = Field(default=None, description="B 가 보이면 같은 캐릭터인가(분홍 머리, 빨간 옷). 미등장이면 null")
     subject_boxes: List[Box] = Field(default_factory=list, description="화면에 보이는 주요 인물(A/B) 각각의 머리~몸통 경계 상자")
+    a_count: int = Field(default=1, description="화면에 보이는 캐릭터 A(빼딱맨, 흰 몸)의 인원 수. 한 사람이 두 번 그려진 중복이면 2 이상")
+    b_count: int = Field(default=1, description="화면에 보이는 캐릭터 B(빨간 옷 빌런)의 인원 수")
     note: str = ""
+
+
+NARRATIVE_ALLOWANCE = ("대본 지문상 정당한 외형 변화는 불합격 사유가 아니다: B 의 가발/주황 머리카락이 벗겨져 대머리가 된 것, 표정 변화, 쓰러지거나 우는 자세, "
+                      "소품 변화 등. 정체성 판단은 얼굴형·피부(분홍 머리색)·옷 색 같은 고정 특징으로만 한다. ")
 
 
 CHECK_PROMPT = ("첫 세 이미지는 A 의 원본 마스코트(최우선 기준), A 참조 시트, B 참조 시트이고 마지막 이미지는 검사할 컷이다. 엄격하게 검사하라. "
                 "A 는 원본 마스코트와 같은 얼굴(둥근 흰 머리, 무거운 눈꺼풀, 각진 눈썹, 길게 비스듬한 스머크)과 같은 하얀 몸이어야 한다. "
                 "글자 아티팩트는 효과음(CRISP, CLICK, beep 등), 영문 단어, 캡션, 워터마크처럼 그림 위에 그려진 글자를 말한다. "
-                "B 의 주황 머리카락은 이야기상 가발이 벗겨져 없을 수 있으므로 머리카락 유무는 무시하고 얼굴형·분홍 머리색·빨간 옷으로 판단한다. "
+                "주인공 A, 빌런 B 는 이야기에 각각 한 명뿐이므로 같은 캐릭터가 한 화면에 두 번 그려진 경우(a_count/b_count)를 정확히 세라. "
                 "편의점 간판·상품 포장의 작은 배경 글자는 무시한다. 경계 상자는 [ymin,xmin,ymax,xmax] 를 0~1000 으로 정규화한다.")
 
 
-def check_cut(client, sheets: Dict[str, Image.Image], im: Image.Image) -> Optional[CutCheck]:
+def check_cut(client, sheets: Dict[str, Image.Image], im: Image.Image, scene_note: str = "") -> Optional[CutCheck]:
     from google.genai import types
     for m in TEXT_MODELS:
         try:
-            r = client.models.generate_content(model=m, contents=[CHECK_PROMPT, sheets["ANCHOR"], sheets["A"], sheets["B"], im],
+            r = client.models.generate_content(model=m, contents=[CHECK_PROMPT + NARRATIVE_ALLOWANCE + (f"이 컷의 대본 지문: {scene_note}" if scene_note else ""), sheets["ANCHOR"], sheets["A"], sheets["B"], im],
                                                config=types.GenerateContentConfig(response_mime_type="application/json",
                                                                                   response_schema=CutCheck, temperature=0.0))
             return r.parsed if isinstance(r.parsed, CutCheck) else CutCheck.model_validate(json.loads(r.text))
@@ -387,11 +398,11 @@ class ScoreList(BaseModel):
     scores: List[CutScore]
 
 
-def score_consistency(client, sheets: Dict[str, Image.Image], cuts: List[Image.Image]) -> ScoreList:
+def score_consistency(client, sheets: Dict[str, Image.Image], cuts: List[Image.Image], notes: Optional[List[str]] = None) -> ScoreList:
     from google.genai import types
-    parts: List = ["첫 세 이미지는 A 원본 마스코트, 캐릭터 A, B 참조 시트다. 이어지는 이미지는 컷 1~%d 순서다. 각 컷을 엄격하게 채점하라." % len(cuts), sheets["ANCHOR"], sheets["A"], sheets["B"]]
+    parts: List = ["첫 세 이미지는 A 원본 마스코트, 캐릭터 A, B 참조 시트다. 이어지는 이미지는 컷 1~%d 순서다. 각 컷을 엄격하게 채점하라. " % len(cuts) + NARRATIVE_ALLOWANCE, sheets["ANCHOR"], sheets["A"], sheets["B"]]
     for i, im in enumerate(cuts, 1):
-        parts += [f"컷 {i}:", im]
+        parts += [f"컷 {i} (대본 지문: {notes[i - 1] if notes and i - 1 < len(notes) else '-'}):", im]
     last = None
     for m in TEXT_MODELS:
         try:
@@ -404,31 +415,32 @@ def score_consistency(client, sheets: Dict[str, Image.Image], cuts: List[Image.I
 
 
 # --------------------------------------------------------------------------- 메인
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("episode_id")
-    ap.add_argument("--redo-sheets", action="store_true")
-    ap.add_argument("--redo-cuts", action="store_true")
-    ap.add_argument("--suffix", default="_webtoon")
-    args = ap.parse_args()
+@dataclass
+class WebtoonResult:
+    path: Path
+    report: Dict[str, Any]
 
+
+def render_webtoon(script, *, audio_plan=None, suffix: str = "", redo_sheets: bool = False, redo_cuts: bool = False,
+                   max_retry: int = 2, bgm_path=None) -> WebtoonResult:
+    """대본 → 웹툰 6컷 mp4. 오디오 타임라인이 없으면 먼저 확정한다. 컷 단위 점검·재생성·글자 가림·안전 여백 줌 포함."""
     from google import genai
     from audio_timeline import AudioPlan, build_audio_plan
-    from module2_calendar_manager import APPROVED_DIR, PENDING_DIR, load_script
     from module3_renderer import RENDERED_DIR, find_ffmpeg
 
-    sp = next(p for d in (APPROVED_DIR, PENDING_DIR) if (p := d / f"{args.episode_id}.json").exists())
-    script = load_script(sp)
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", "").strip())
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY 가 없습니다.")
+    client = genai.Client(api_key=key)
     out = OUT_ROOT / script.episode_id
     out.mkdir(parents=True, exist_ok=True)
 
-    audio = AudioPlan.load(script.episode_id) if AudioPlan.exists(script.episode_id) else build_audio_plan(script)
+    audio = audio_plan or (AudioPlan.load(script.episode_id) if AudioPlan.exists(script.episode_id) else build_audio_plan(script))
     t0 = time.time()
-    sheets = make_sheets(client, out, args.redo_sheets)
+    sheets = make_sheets(client, out, redo_sheets)
 
     shots_p = out / "shots.json"
-    if shots_p.exists() and not args.redo_cuts:
+    if shots_p.exists() and not redo_cuts:
         sl = ShotList.model_validate_json(shots_p.read_text(encoding="utf-8"))
     else:
         sl = plan_shots(client, script)
@@ -438,7 +450,7 @@ def main() -> int:
     cuts: List[Image.Image] = []
     checks: Dict[int, Optional[CutCheck]] = {}
     report: Dict[int, Dict] = {}
-    MAX_RETRY = 2
+    MAX_RETRY = max_retry
 
     def bad(c: Optional[CutCheck]) -> str:
         if c is None:
@@ -450,19 +462,21 @@ def main() -> int:
             why.append("A 정체성")
         if c.b_ok is False:
             why.append("B 정체성")
+        if c.a_count > 1 or c.b_count > 1:
+            why.append("캐릭터 중복")
         return ",".join(why)
 
     for i, sc in enumerate(script.scenes):
         p = out / f"cut_{i + 1}.png"
         shot = shots.get(sc.scene_number) or sl.shots[i]
-        if p.exists() and not args.redo_cuts:
+        if p.exists() and not redo_cuts:
             im = Image.open(p).convert("RGB")
         else:
             t = time.time()
             im = make_cut(client, shot, sl.setting_bible, sheets, cuts[0] if cuts else None)
             im.save(p)
             print(f"[Webtoon] 컷 {i + 1}/{len(script.scenes)} 생성 {im.size} ({time.time() - t:.0f}s) motion={shot.motion}", flush=True)
-        chk = check_cut(client, sheets, im)
+        chk = check_cut(client, sheets, im, sc.stickman_action)
         rep = {"retries": 0, "covered": False, "first_issue": bad(chk)}
         retry = 0
         while bad(chk) and retry < MAX_RETRY:
@@ -473,7 +487,7 @@ def main() -> int:
                 "express impact only with motion lines and star bursts. Keep the characters EXACTLY as in the reference sheets.)")})
             im.save(out / f"cut_{i + 1}_rejected{retry}.png")
             im = make_cut(client, shot2, sl.setting_bible, sheets, cuts[0] if cuts else None)
-            chk = check_cut(client, sheets, im)
+            chk = check_cut(client, sheets, im, sc.stickman_action)
         rep["retries"] = retry
         if chk and chk.has_text and chk.text_boxes:       # 재생성으로도 남은 글자는 인페인팅으로 가린다
             im = cover_text(im, chk.text_boxes)
@@ -490,10 +504,20 @@ def main() -> int:
 
     # 합성 → mp4 (확정 마스터 오디오와 함께 한 번에 인코딩)
     ffmpeg = find_ffmpeg()
-    dst = RENDERED_DIR / f"{script.episode_id}{args.suffix}.mp4"
+    dst = RENDERED_DIR / f"{script.episode_id}{suffix}.mp4"
+    part = dst.with_name(dst.stem + ".part.mp4")        # 인코딩 도중 실패한 불완전 파일이 최종 경로에 남지 않게 임시 파일로 쓴다
+    audio_path = audio.master_wav()
+    if bgm_path:
+        from module3_renderer import BGM_DIR, mix_bgm_with_auto_ducking
+        bp = Path(bgm_path)
+        bp = bp if bp.is_absolute() else BGM_DIR / bp
+        if bp.exists():
+            audio_path = out / "master_bgm.wav"
+            mix_bgm_with_auto_ducking(master_audio_path=audio.master_wav(), bgm_path=bp, output_path=audio_path,
+                                      bgm_volume=0.15, vocal_pocketing=True)
     cmd = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-           "-i", str(audio.master_wav()), "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", str(dst)]
+           "-i", str(audio_path), "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", str(part)]
     t1 = time.time()
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     for i, sc in enumerate(script.scenes):
@@ -504,13 +528,16 @@ def main() -> int:
             proc.stdin.write(cp.frame(f).tobytes())
         print(f"[Webtoon] 컷 {i + 1} 합성 {cp.n}프레임", flush=True)
     proc.stdin.close()
-    if proc.wait() != 0:
+    if proc.wait() != 0 or not part.exists():
+        part.unlink(missing_ok=True)
         raise RuntimeError("ffmpeg 인코딩 실패")
+    os.replace(part, dst)
     print(f"[Webtoon] 인코딩 {time.time() - t1:.0f}s", flush=True)
 
     # 일관성 채점
+    sc_list, ok = None, 0
     try:
-        sc_list = score_consistency(client, sheets, cuts)
+        sc_list = score_consistency(client, sheets, cuts, [x.stickman_action for x in script.scenes])
         atomic_write_json(out / "consistency.json", sc_list.model_dump())
         ok = 0
         for s in sc_list.scores:
@@ -522,7 +549,24 @@ def main() -> int:
         print(f"[Score] VLM 자동 채점 합격 {ok}/{len(sc_list.scores)}", flush=True)
     except Exception as e:  # noqa: BLE001
         print(f"[Score] 채점 생략: {e}", flush=True)
+    summary = {"path": str(dst), "image_stage_sec": round(t_img), "cut_reports": report,
+               "vlm_pass": f"{ok}/{len(sc_list.scores)}" if sc_list else None,
+               "needs_review": [k for k, v in report.items() if v.get("final_issue")]}
+    atomic_write_json(out / "report.json", summary)
     print(f"DONE {dst} (이미지 {t_img:.0f}s)", flush=True)
+    return WebtoonResult(dst, summary)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("episode_id")
+    ap.add_argument("--redo-sheets", action="store_true")
+    ap.add_argument("--redo-cuts", action="store_true")
+    ap.add_argument("--suffix", default="_webtoon")
+    args = ap.parse_args()
+    from module2_calendar_manager import APPROVED_DIR, PENDING_DIR, load_script
+    sp = next(p for d in (APPROVED_DIR, PENDING_DIR) if (p := d / f"{args.episode_id}.json").exists())
+    render_webtoon(load_script(sp), suffix=args.suffix, redo_sheets=args.redo_sheets, redo_cuts=args.redo_cuts)
     return 0
 
 

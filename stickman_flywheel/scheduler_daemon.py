@@ -148,10 +148,11 @@ def _render_one(item: Dict[str, Any]) -> str:
     update_golden_queue_item(ep_id, status="rendering", render_started_at=datetime.now().isoformat())
     _write_status(rendering_episode=ep_id)
     try:
-        from module3_renderer import BGM_DIR, StickmanShortRenderer
+        from module3_renderer import BGM_DIR
+        from renderers import render_episode_auto
         bgm_name = os.getenv("DAEMON_BGM", "").strip()
         bgm = (BGM_DIR / bgm_name) if bgm_name else None
-        path = StickmanShortRenderer().render_episode(load_script(approved_json), bgm_path=bgm)
+        path, info = render_episode_auto(load_script(approved_json), preferred=item.get("renderer"), bgm_path=bgm, log=_log)
     except Exception as e:
         attempts = int(item.get("render_attempts", 0)) + 1
         update_golden_queue_item(ep_id, status="render_failed", render_attempts=attempts,
@@ -159,8 +160,12 @@ def _render_one(item: Dict[str, Any]) -> str:
         raise
     finally:
         _write_status(rendering_episode=None)
-    update_golden_queue_item(ep_id, status="ready_to_publish", video_path=str(path), last_error=None)
-    return f"{ep_id}: 렌더 완료 → {Path(path).name}"
+    update_golden_queue_item(ep_id, status="ready_to_publish", video_path=str(path), last_error=None,
+                             rendered_by=info.get("renderer"), render_info=info)
+    extra = f" [{info.get('renderer')}" + (f", VLM {info['vlm_pass']}" if info.get("vlm_pass") else "") + \
+            (f", 검수 필요 컷 {info['needs_review']}" if info.get("needs_review") else "") + \
+            (", 폴백 사용" if info.get("fallback_from") else "") + "]"
+    return f"{ep_id}: 렌더 완료 → {Path(path).name}{extra}"
 
 
 def step_render() -> str:
@@ -293,7 +298,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="스틱맨 플라이휠 무인 스케줄러 데몬")
     ap.add_argument("--once", action="store_true", help="tick 1회 실행 후 종료")
     ap.add_argument("--run", choices=sorted(JOBS), help="지정 작업 1회 실행 후 종료")
+    ap.add_argument("--renderer", choices=("webtoon", "stage", "legacy"),
+                    help="이 데몬 프로세스의 렌더러(기본 webtoon, 환경변수 DAEMON_RENDERER 로도 지정 가능)")
     args = ap.parse_args()
+    if args.renderer:
+        os.environ["DAEMON_RENDERER"] = args.renderer
 
     if args.once or args.run:
         name = args.run or "tick"

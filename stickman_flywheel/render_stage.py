@@ -31,6 +31,51 @@ def _load_script(ep: str):
     raise FileNotFoundError(ep)
 
 
+def render_stage(script, audio=None, reuse_plan: bool = False, suffix: str = "_stage", plan_only: bool = False, bgm_path=None):
+    """스틱맨 스테이지 렌더(백업 렌더러). 반환: mp4 경로(plan_only 면 None)."""
+    from asset_library import AssetLibrary
+    from audio_timeline import AudioPlan, build_audio_plan
+    from director import plan_stage
+    from stage_engine import StageRuntime
+
+    t0 = time.time()
+    plan_path = PLANS_DIR / f"{script.episode_id}.json"
+    if reuse_plan and plan_path.exists():
+        from director_ir import StagePlan, validate_plan
+        plan, warns = validate_plan(StagePlan.model_validate_json(plan_path.read_text(encoding="utf-8")), len(script.scenes))
+        print(f"[Director] 저장된 계획 재사용: {plan_path.name}", flush=True)
+    else:
+        plan, warns = plan_stage(script)
+        PLANS_DIR.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(plan_path, plan.model_dump())
+    print(f"[Director] 장소={plan.location.id} 세트={[s.id for s in plan.set_pieces]} 소품={[p.id for p in plan.props]} "
+          f"비트={[len(c.beats) for c in plan.cuts]} ({time.time() - t0:.0f}s)", flush=True)
+    for w in warns:
+        print(f"[Director:warn] {w}", flush=True)
+
+    t1 = time.time()
+    lib = AssetLibrary(log=lambda m: print(m, flush=True))
+    assets = lib.resolve_plan(plan)
+    print(f"[Assets] cache_hit={lib.stats['cache_hit']} generated={lib.stats['generated']} fallback={lib.stats['fallback']} ({time.time() - t1:.0f}s)", flush=True)
+    if plan_only:
+        return None
+
+    from module3_renderer import StickmanShortRenderer
+    rt = StageRuntime(plan, assets)
+    r = StickmanShortRenderer()
+    r.stage_runtime = rt
+    r.output_suffix = suffix
+    r.episode_setting = plan.location.id
+    t2 = time.time()
+    if audio is None:
+        audio = AudioPlan.load(script.episode_id) if (reuse_plan and AudioPlan.exists(script.episode_id)) else build_audio_plan(script, r)
+    path = r.render_episode(script, audio_plan=audio, bgm_path=bgm_path)
+    for w in rt.warnings:
+        print(f"[Stage:warn] {w}", flush=True)
+    print(f"DONE {path} ({time.time() - t2:.0f}s)", flush=True)
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("episode_id", nargs="?")
@@ -48,47 +93,7 @@ def main() -> int:
         script = _load_script(args.episode_id)
     else:
         ap.error("episode_id 또는 --topic 필요")
-
-    from asset_library import AssetLibrary
-    from director import plan_stage
-    from stage_engine import StageRuntime
-
-    t0 = time.time()
-    plan_path = PLANS_DIR / f"{script.episode_id}.json"
-    if args.reuse_plan and plan_path.exists():
-        from director_ir import StagePlan, validate_plan
-        plan, warns = validate_plan(StagePlan.model_validate_json(plan_path.read_text(encoding="utf-8")), len(script.scenes))
-        print(f"[Director] 저장된 계획 재사용: {plan_path.name}", flush=True)
-    else:
-        plan, warns = plan_stage(script)
-        PLANS_DIR.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(plan_path, plan.model_dump())
-    print(f"[Director] 장소={plan.location.id} 세트={[s.id for s in plan.set_pieces]} 소품={[p.id for p in plan.props]} "
-          f"비트={[len(c.beats) for c in plan.cuts]} ({time.time() - t0:.0f}s)", flush=True)
-    for w in warns:
-        print(f"[Director:warn] {w}", flush=True)
-
-    t1 = time.time()
-    lib = AssetLibrary(log=lambda m: print(m, flush=True))
-    assets = lib.resolve_plan(plan)
-    print(f"[Assets] {({k: len(v) for k, v in lib.stats.items()})} ({time.time() - t1:.0f}s)", flush=True)
-    print(f"[Assets] cache_hit={lib.stats['cache_hit']} generated={lib.stats['generated']} fallback={lib.stats['fallback']}", flush=True)
-    if args.plan_only:
-        return 0
-
-    from module3_renderer import StickmanShortRenderer
-    rt = StageRuntime(plan, assets)
-    r = StickmanShortRenderer()
-    r.stage_runtime = rt
-    r.output_suffix = args.suffix
-    r.episode_setting = plan.location.id
-    t2 = time.time()
-    from audio_timeline import AudioPlan, build_audio_plan
-    audio = AudioPlan.load(script.episode_id) if (args.reuse_plan and AudioPlan.exists(script.episode_id)) else build_audio_plan(script, r)
-    path = r.render_episode(script, audio_plan=audio)
-    for w in rt.warnings:
-        print(f"[Stage:warn] {w}", flush=True)
-    print(f"DONE {path} ({time.time() - t2:.0f}s)", flush=True)
+    render_stage(script, reuse_plan=args.reuse_plan, suffix=args.suffix, plan_only=args.plan_only)
     return 0
 
 
