@@ -22,9 +22,10 @@ RENDERED_DIR = BASE_DIR / "pipeline_outputs" / "rendered"
 APPROVED_DIR = BASE_DIR / "pipeline_outputs" / "approved"
 CONFIG_DIR = BASE_DIR / "config"
 
+# videos.insert 에는 youtube.upload 하나면 충분하다. 토큰(auth_youtube.py)이 승인받은 범위의 부분집합만 요청해야
+# 갱신 시 invalid_scope 가 나지 않는다 (예전에는 승인된 적 없는 'youtube' 범위를 요청해 갱신이 거부됐다).
 YOUTUBE_UPLOAD_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube",
 ]
 
 # 초기 영상은 사람이 직접 확인한 뒤 수동으로 공개 전환한다: private/unlisted 외의 값은 모두 private 로 강제한다.

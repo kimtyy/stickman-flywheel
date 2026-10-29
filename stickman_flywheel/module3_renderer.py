@@ -3365,17 +3365,30 @@ class StickmanShortRenderer:
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", "160k", "-ar", str(SR), "-ac", "1", "-t", f"{n / FPS:.3f}", clip.name]
         log = tmp / f"ffmpeg_scene_{idx:02d}.log"
-        with open(log, "wb") as logf:
-            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=logf, cwd=str(tmp))
-            try:
-                for i in range(n):
-                    proc.stdin.write(sv.frame(i).convert("RGB").tobytes())
-                proc.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
-            proc.wait()
-        if proc.returncode != 0 or not clip.exists():
-            raise RuntimeError(f"씬 {idx + 1} 렌더 실패: {log.read_text(errors='ignore')[-800:]}")
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # pythonw/작업 스케줄러(콘솔 없음)에서도 ffmpeg 가 안정적으로 뜨도록
+        reason = ""
+        for attempt in (1, 2):  # 간헐적 ffmpeg 종료는 같은 씬을 한 번 더 시도
+            io_err = ""
+            with open(log, "wb") as logf:
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=logf,
+                                        cwd=str(tmp), creationflags=no_window)
+                try:
+                    for i in range(n):
+                        proc.stdin.write(sv.frame(i).convert("RGB").tobytes())
+                    proc.stdin.close()
+                except (BrokenPipeError, OSError) as e:
+                    io_err = f"{type(e).__name__}: {e}"
+                except BaseException:
+                    proc.kill()
+                    proc.wait()
+                    raise
+                proc.wait()
+            if proc.returncode == 0 and clip.exists():
+                return
+            reason = (f"returncode={proc.returncode}, clip_exists={clip.exists()}, io={io_err or '-'}, "
+                      f"ffmpeg={log.read_text(errors='ignore')[-600:].strip() or '(출력 없음)'}")
+            print(f"[Render] 씬 {idx + 1} ffmpeg 실패 (시도 {attempt}/2): {reason}", flush=True)
+        raise RuntimeError(f"씬 {idx + 1} 렌더 실패: {reason}")
 
     # ---------------- 최종 조립 ----------------
     def render_episode(self, script: Union[StickmanScriptOutput, str, Path],
