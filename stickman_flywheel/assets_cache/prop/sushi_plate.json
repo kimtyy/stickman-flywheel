@@ -1,0 +1,124 @@
+{
+  "style_version": "v1",
+  "ref": {
+    "id": "sushi_plate",
+    "label": "초밥 접시",
+    "description": "다 먹고 남은 빨간색 둥근 빈 초밥 접시",
+    "kind": "prop",
+    "height_px": 150
+  },
+  "spec": {
+    "name": "sushi_plate",
+    "kind": "prop",
+    "w": 300,
+    "h": 150,
+    "shapes": [
+      {
+        "type": "ellipse",
+        "x": 10.0,
+        "y": 40.0,
+        "w": 280.0,
+        "h": 100.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#7a0000",
+        "fill2": "",
+        "stroke": "#000000",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 280.0,
+        "h": 100.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#ff2a2a",
+        "fill2": "#cc0000",
+        "stroke": "#000000",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 40.0,
+        "y": 25.0,
+        "w": 220.0,
+        "h": 70.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#cc0000",
+        "fill2": "#990000",
+        "stroke": "#000000",
+        "stroke_w": 4.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 25.0,
+        "y": 18.0,
+        "w": 250.0,
+        "h": 84.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "",
+        "fill2": "",
+        "stroke": "#ffd700",
+        "stroke_w": 3.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 30.0,
+        "y": 22.0,
+        "w": 90.0,
+        "h": 20.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#ff8080",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 55.0,
+        "y": 35.0,
+        "w": 70.0,
+        "h": 15.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#ff4d4d",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      }
+    ],
+    "anchors": [
+      {
+        "name": "grip",
+        "x": 20.0,
+        "y": 60.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      {
+        "name": "hit_zone",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 280.0,
+        "h": 130.0
+      }
+    ]
+  }
+}

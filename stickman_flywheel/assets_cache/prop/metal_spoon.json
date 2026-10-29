@@ -1,0 +1,109 @@
+{
+  "style_version": "v1",
+  "ref": {
+    "id": "metal_spoon",
+    "label": "금속 숟가락",
+    "description": "은빛으로 빛나는 튼튼한 금속 숟가락",
+    "kind": "prop",
+    "height_px": 120
+  },
+  "spec": {
+    "name": "metal_spoon",
+    "kind": "prop",
+    "w": 50,
+    "h": 120,
+    "shapes": [
+      {
+        "type": "rrect",
+        "x": 21.0,
+        "y": 40.0,
+        "w": 8.0,
+        "h": 70.0,
+        "r": 4.0,
+        "pts": [],
+        "fill": "#cccccc",
+        "fill2": "#999999",
+        "stroke": "#222222",
+        "stroke_w": 4.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 30.0,
+        "h": 45.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#e6e6e6",
+        "fill2": "#cccccc",
+        "stroke": "#222222",
+        "stroke_w": 4.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 15.0,
+        "y": 18.0,
+        "w": 20.0,
+        "h": 30.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#b3b3b3",
+        "fill2": "#999999",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "ellipse",
+        "x": 14.0,
+        "y": 16.0,
+        "w": 5.0,
+        "h": 15.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#ffffff",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rrect",
+        "x": 23.0,
+        "y": 50.0,
+        "w": 2.0,
+        "h": 50.0,
+        "r": 1.0,
+        "pts": [],
+        "fill": "#ffffff",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      }
+    ],
+    "anchors": [
+      {
+        "name": "grip",
+        "x": 25.0,
+        "y": 80.0,
+        "w": 0.0,
+        "h": 0.0
+      },
+      {
+        "name": "hit_zone",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 30.0,
+        "h": 45.0
+      }
+    ]
+  }
+}

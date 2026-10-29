@@ -1,0 +1,154 @@
+{
+  "style_version": "v1",
+  "ref": {
+    "id": "pos_counter",
+    "label": "계산대",
+    "description": "편의점 계산대. 흰 상판과 어두운 몸통, 위에 POS 단말기 놓을 수 있는 평평한 윗면",
+    "kind": "set_piece",
+    "height_px": 280
+  },
+  "spec": {
+    "name": "pos_counter",
+    "kind": "set_piece",
+    "w": 500,
+    "h": 280,
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 20.0,
+        "y": 30.0,
+        "w": 460.0,
+        "h": 250.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#2c3e50",
+        "fill2": "#1a252f",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rect",
+        "x": 30.0,
+        "y": 250.0,
+        "w": 440.0,
+        "h": 30.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#11151c",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rect",
+        "x": 20.0,
+        "y": 50.0,
+        "w": 460.0,
+        "h": 15.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#0097e6",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rect",
+        "x": 20.0,
+        "y": 65.0,
+        "w": 460.0,
+        "h": 10.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#e1b12c",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rect",
+        "x": 40.0,
+        "y": 95.0,
+        "w": 420.0,
+        "h": 155.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#353b48",
+        "fill2": "#2f3640",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rect",
+        "x": 48.0,
+        "y": 103.0,
+        "w": 8.0,
+        "h": 139.0,
+        "r": 0.0,
+        "pts": [],
+        "fill": "#4a5463",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rrect",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 480.0,
+        "h": 40.0,
+        "r": 8.0,
+        "pts": [],
+        "fill": "#f5f6fa",
+        "fill2": "#dcdde1",
+        "stroke": "#0f0f19",
+        "stroke_w": 5.0,
+        "text": "",
+        "size": 0.0
+      },
+      {
+        "type": "rrect",
+        "x": 20.0,
+        "y": 15.0,
+        "w": 460.0,
+        "h": 10.0,
+        "r": 4.0,
+        "pts": [],
+        "fill": "#ffffff",
+        "fill2": "",
+        "stroke": "#0f0f19",
+        "stroke_w": 0.0,
+        "text": "",
+        "size": 0.0
+      }
+    ],
+    "anchors": [
+      {
+        "name": "surface",
+        "x": 10.0,
+        "y": 10.0,
+        "w": 480.0,
+        "h": 0.0
+      },
+      {
+        "name": "hit_zone",
+        "x": 20.0,
+        "y": 30.0,
+        "w": 460.0,
+        "h": 250.0
+      }
+    ]
+  }
+}

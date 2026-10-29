@@ -2659,6 +2659,7 @@ class SceneVisuals:
 
         # 3. 임팩트 카메라 쉐이크 (Camera Shake)
         amp = 16.0 if self.cam["shake"] else 0.0
+        amp = max(amp, getattr(self, "stage_shake", 0.0))  # 스테이지 엔진의 충격(타격/쾅) 셰이크
         if cam_fx == "camera_shake":
             shake_fade = max(0.2, 1.0 - u * 0.4)
             amp = max(amp, 38.0 * shake_fade)
@@ -2828,6 +2829,10 @@ class SceneVisuals:
         if self.main_pose == "freeze" or self.foe_pose == "freeze":
             img = Image.blend(img, Image.new("RGB", (W, H), (190, 225, 255)), 0.22)
 
+        return self._compose(img, i, t, main_fig, foe_fig)
+
+    def _compose(self, img: Image.Image, i: int, t: float, main_fig: Dict, foe_fig: Dict) -> Image.Image:
+        """카메라/UI 오버레이/임팩트 타이포/말풍선/자막 합성 — 스테이지 모드(stage_engine)와 공유한다."""
         # --- 카메라 연출 적용 (배경, 캐릭터, 소품, 이펙트 줌/패닝)
         img, (cam_x0, cam_y0, cam_z) = self._camera(img, i, t)
 
@@ -3143,6 +3148,8 @@ class StickmanShortRenderer:
         self.voice = voice
         self.episode_context: str = ""
         self.current_episode_id: str = ""
+        self.stage_runtime = None   # StageRuntime 이 지정되면 행동 타임라인 기반 스테이지 모드로 렌더
+        self.output_suffix = ""
         self.ffmpeg = find_ffmpeg()
         self.sfx = SfxSynth()
         self.sfx.ensure_all()
@@ -3490,8 +3497,12 @@ class StickmanShortRenderer:
     # ---------------- 비주얼 + 씬 클립 ----------------
     def _render_scene_visuals(self, scene: SceneBeat, idx: int, total: int, title: str, pose: str,
                               dur: float, hit_t: float, timeline: List[Dict], wav: Path, clip: Path, tmp: Path) -> None:
-        sv = SceneVisuals(scene, idx, total, title, pose, dur, hit_t, timeline=timeline,
-                          episode_setting=getattr(self, "episode_setting", ""))
+        if getattr(self, "stage_runtime", None) is not None:
+            from stage_engine import StageVisuals  # 스테이지 모드: 행동 타임라인 기반 연출
+            sv = StageVisuals(self.stage_runtime, scene, idx, total, title, pose, dur, hit_t, timeline=timeline)
+        else:
+            sv = SceneVisuals(scene, idx, total, title, pose, dur, hit_t, timeline=timeline,
+                              episode_setting=getattr(self, "episode_setting", ""))
         n = sv.n_frames
         cmd = [self.ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
                "-r", str(FPS), "-i", "-", "-i", wav.name, "-map", "0:v", "-map", "1:a",
@@ -3633,7 +3644,7 @@ class StickmanShortRenderer:
                 "-movflags", "+faststart", "-shortest", "final.mp4"
             ], cwd=tmp)
 
-            out_path = RENDERED_DIR / f"{script.episode_id}.mp4"
+            out_path = RENDERED_DIR / f"{script.episode_id}{getattr(self, 'output_suffix', '')}.mp4"
             if out_path.exists():
                 try:
                     out_path.unlink()
