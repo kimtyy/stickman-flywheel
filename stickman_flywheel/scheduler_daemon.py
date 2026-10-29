@@ -107,7 +107,10 @@ def step_serve() -> str:
         return "오늘자 서빙이 이미 존재 → 건너뜀"
     from module1_trend_and_script import run_curation_batch
     candidates = run_curation_batch(count=3)
-    CalendarManager().serve_candidate_buffet(candidates=candidates, target_date=date.today())
+    served = CalendarManager().serve_candidate_buffet(candidates=candidates, target_date=date.today())
+    if not served.get("calendar_synced"):
+        why = served.get("calendar_error") or "캘린더 미연동(Dry-Run)"
+        return f"WARN 후보 {len(candidates)}건 생성됨, 그러나 캘린더 등록 실패 → 대시보드에서 수동 승인 필요: {why}"
     return f"후보 {len(candidates)}건 서빙 완료"
 
 
@@ -273,6 +276,19 @@ def _already_running() -> bool:
     return bool(st.get("alive") and st.get("pid") and st["pid"] != os.getpid())
 
 
+def _redirect_output_to_logfile() -> None:
+    """pythonw/작업 스케줄러로 콘솔 없이 돌 때 stdout·stderr(트레이스백 포함)가 사라지지 않도록 daemon.log 로 보낸다."""
+    log_path = OUT_DIR / "daemon.log"
+    try:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        if log_path.exists() and log_path.stat().st_size > 2_000_000:
+            os.replace(log_path, OUT_DIR / "daemon.log.1")
+        f = open(log_path, "a", encoding="utf-8", buffering=1)
+    except OSError:
+        return
+    sys.stdout = sys.stderr = f
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="스틱맨 플라이휠 무인 스케줄러 데몬")
     ap.add_argument("--once", action="store_true", help="tick 1회 실행 후 종료")
@@ -288,6 +304,7 @@ def main() -> int:
         print("이미 다른 스케줄러 데몬이 실행 중입니다 (daemon_status.json 하트비트 확인).")
         return 1
 
+    _redirect_output_to_logfile()
     from apscheduler.schedulers.blocking import BlockingScheduler
 
     sched = BlockingScheduler()

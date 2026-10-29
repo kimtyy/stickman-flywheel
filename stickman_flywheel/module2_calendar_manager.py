@@ -108,6 +108,7 @@ class CalendarManager:
         self.calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
         self.service = None
         self.dry_run = True
+        self.event_errors: List[str] = []  # Live 모드에서 이벤트 생성이 실패한 사유(가상 ID 대체 발생)
         self._init_service()
 
     def _resolve(self, p: str) -> Path:
@@ -182,6 +183,7 @@ class CalendarManager:
             return created["id"]
         except Exception as e:
             print(f"[Calendar] 이벤트 생성 실패 → 가상 ID 반환: {e}")
+            self.event_errors.append(str(e))
             return f"dryrun-{uuid.uuid4().hex[:12]}"
 
     def serve_candidate_buffet(self, candidates: List[Dict[str, Any]],
@@ -304,7 +306,10 @@ class CalendarManager:
             "golden_time_scheduled": None,
             "reminder_event_id": reminder_event_id,
             "candidates": served_candidates,
+            "calendar_synced": not (self.dry_run or self.service is None or self.event_errors),
         }
+        if self.event_errors:
+            serving_data["calendar_error"] = self.event_errors[0][:300]
 
         atomic_write_json(CANDIDATE_SERVING_FILE, serving_data)
         mode = "Live" if (not self.dry_run and self.service) else "Dry-Run"
