@@ -31,7 +31,7 @@ def _clamp(v: float, a: float, b: float) -> float:
     return max(a, min(b, v))
 
 
-LYING_HEAD_REACH = 410.0   # 누운 몸: 힙에서 머리 쪽(넘어지는 방향)으로 뻗는 길이(머리 반지름 포함)
+LYING_HEAD_REACH = 480.0   # 누운 몸: 힙에서 머리 쪽(넘어지는 방향)으로 뻗는 길이(머리 반지름 포함)
 LYING_LEG_REACH = 260.0    # 힙에서 다리 쪽으로 뻗는 길이
 
 
@@ -127,6 +127,28 @@ class FrameState:
 
 
 # --------------------------------------------------------------------------- 런타임 (에피소드 전체에서 상태 유지)
+ACTOR_H = 590.0
+MAX_PROP_H = ACTOR_H * 0.26     # 소품 높이 상한(≈153px): 손/상체 비율을 넘지 않게
+MAX_PROP_W = ACTOR_H * 0.42     # 소품 너비 상한(≈248px)
+
+
+def normalize_prop(spec: AssetSpec, target_h: float = 0.0) -> AssetSpec:
+    """소품을 목표 높이(AssetRef.height_px)와 인물 대비 상한(MAX_PROP_H/W)에 맞춰 도형·앵커째 균일 축소한다(확대는 안 함)."""
+    cap_h = min(MAX_PROP_H, target_h * 1.15) if target_h > 0 else MAX_PROP_H
+    s = min(1.0, cap_h / max(spec.h, 1), MAX_PROP_W / max(spec.w, 1))
+    if s >= 0.98:
+        return spec
+    sp = spec.model_copy(deep=True)
+    sp.w, sp.h = max(8, int(round(spec.w * s))), max(8, int(round(spec.h * s)))
+    for sh in sp.shapes:
+        sh.x, sh.y, sh.w, sh.h, sh.r, sh.size = sh.x * s, sh.y * s, sh.w * s, sh.h * s, sh.r * s, sh.size * s
+        sh.pts = [v * s for v in sh.pts]
+        sh.stroke_w = max(2.0, sh.stroke_w * s) if sh.stroke_w else 0.0
+    for an in sp.anchors:
+        an.x, an.y, an.w, an.h = an.x * s, an.y * s, an.w * s, an.h * s
+    return sp
+
+
 class StageRuntime:
     def __init__(self, plan: StagePlan, assets: Dict[str, AssetSpec], log=print) -> None:
         self.plan, self.assets, self.log = plan, assets, log
@@ -146,8 +168,11 @@ class StageRuntime:
         self.actors["A"].facing = 1 if plan.a_start_x <= plan.b_start_x else -1
         self.actors["B"].facing = -self.actors["A"].facing
         for pr in plan.props:
-            spec = assets[f"prop:{slug(pr.asset.id)}"]
-            ps = PropState(pr.id, spec, derive_default_anchors(spec), x=pr.x * W)
+            raw = assets[f"prop:{slug(pr.asset.id)}"]
+            spec = normalize_prop(raw, float(pr.asset.height_px or 0))
+            if spec is not raw:
+                self.log(f"[Stage] 소품 스케일 정규화 {pr.id}: {raw.w}x{raw.h} → {spec.w}x{spec.h}")
+            ps =PropState(pr.id, spec, derive_default_anchors(spec), x=pr.x * W)
             kind, _, ref = pr.start.partition(":")
             if kind == "surface" and slug(ref) in self.pieces:
                 pc = self.pieces[slug(ref)]
@@ -471,11 +496,12 @@ class StageRuntime:
                 pose["lean"] = pose.get("lean", 0.0) * (1 - 0.5 * k)
             if a.down_k > 0.01:
                 k = a.down_k
-                pose["rot"] = -95.0 * k
-                pose["ll"] = (_lerp(pose["ll"][0], 14, k), _lerp(pose["ll"][1], 24, k))
-                pose["rl"] = (_lerp(pose["rl"][0], -10, k), _lerp(pose["rl"][1], 6, k))
-                pose["la"] = (_lerp(pose["la"][0], 70, k), _lerp(pose["la"][1], 30, k))
-                pose["ra"] = (_lerp(pose["ra"][0], 110, k), _lerp(pose["ra"][1], 50, k))
+                pose["rot"] = -90.0 * k
+                # 누운 자세: 팔다리를 거의 곧게 펴고(관절 꺾임 ≤6°) 한쪽 팔은 몸 옆, 한쪽은 머리 쪽으로 늘어뜨린다 → 고리처럼 엉키지 않음
+                pose["ll"] = (_lerp(pose["ll"][0], 8, k), _lerp(pose["ll"][1], 12, k))
+                pose["rl"] = (_lerp(pose["rl"][0], 24, k), _lerp(pose["rl"][1], 28, k))
+                pose["la"] = (_lerp(pose["la"][0], 22, k), _lerp(pose["la"][1], 27, k))
+                pose["ra"] = (_lerp(pose["ra"][0], 125, k), _lerp(pose["ra"][1], 131, k))
                 pose["eyes"] = "X" if a.face == "X" else pose["eyes"]
             pose["air"] = pose.get("air", 0.0) + a.air
             if t < a.flinch_until:
@@ -486,7 +512,7 @@ class StageRuntime:
                 pose["eyes"] = "X"
             fig = compute_figure(pose, a.facing, a.x, FLOOR_Y)
             a.last_fig = fig
-            actors[aid] = {"pose": pose, "fig": fig, "x": a.x, "facing": a.facing, "visible": a.visible,
+            actors[aid] = {"pose": pose, "fig": fig, "x": a.x, "facing": a.facing, "visible": a.visible, "down": a.down_k > 0.5,
                            "tags": set(self.tags.get(aid, set()))}
             if a.down_k > 0.9 and a.face == "X":
                 actors[aid]["tags"].add("stars")
@@ -1197,12 +1223,17 @@ class StageVisuals(SceneVisuals):
             if pr["mode"] == "rest" and (pr["surface"] is None or rt.pieces[pr["surface"]].layer != "front"):
                 draw_prop(pr, figs)
         # 인물 (빌런 → 주인공 순)
-        for aid, ctype, color, hfill in (("B", "B", (170, 30, 40), (255, 235, 235)), ("A", "A", (20, 20, 30), (255, 255, 255))):
-            st = fs.actors[aid]
-            if st["visible"]:
-                draw_figure(d, st["fig"], st["pose"], color, hfill, char_type=ctype, t=t, img=img)
+        cast = (("B", "B", (170, 30, 40), (255, 235, 235)), ("A", "A", (20, 20, 30), (255, 255, 255)))
+
+        def draw_cast(down: bool) -> None:
+            for aid, ctype, color, hfill in cast:
+                st = fs.actors[aid]
+                if st["visible"] and bool(st.get("down")) == down:
+                    draw_figure(d, st["fig"], st["pose"], color, hfill, char_type=ctype, t=t, img=img)
+        draw_cast(False)
         for pid in front_ids:
             draw_piece(pid)
+        draw_cast(True)   # 쓰러진 인물은 카운터 뒤에 가려지지 않고 앞쪽 바닥에 누운 것으로 그린다
         for pr in fs.props:
             if pr["mode"] == "rest" and pr["surface"] and rt.pieces[pr["surface"]].layer == "front":
                 draw_prop(pr, figs)
