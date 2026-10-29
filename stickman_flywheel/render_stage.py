@@ -83,7 +83,9 @@ def main() -> int:
     r.output_suffix = args.suffix
     r.episode_setting = plan.location.id
     t2 = time.time()
-    path = r.render_episode(script)
+    from audio_timeline import AudioPlan, build_audio_plan
+    audio = AudioPlan.load(script.episode_id) if (args.reuse_plan and AudioPlan.exists(script.episode_id)) else build_audio_plan(script, r)
+    path = r.render_episode(script, audio_plan=audio)
     for w in rt.warnings:
         print(f"[Stage:warn] {w}", flush=True)
     print(f"DONE {path} ({time.time() - t2:.0f}s)", flush=True)

@@ -3534,25 +3534,8 @@ class StickmanShortRenderer:
             print(f"[Render] 씬 {idx + 1} ffmpeg 실패 (시도 {attempt}/2): {reason}", flush=True)
         raise RuntimeError(f"씬 {idx + 1} 렌더 실패: {reason}")
 
-    # ---------------- 최종 조립 ----------------
-    def render_episode(self, script: Union[StickmanScriptOutput, str, Path],
-                       progress: Optional[Callable[[str, float], None]] = None,
-                       bgm_path: Optional[Union[str, Path]] = None,
-                       bgm_volume: float = 0.15,
-                       vocal_pocketing: bool = True) -> Path:
-        def report(msg: str, frac: float) -> None:
-            print(f"[Render {int(frac * 100):3d}%] {msg}")
-            if progress:
-                progress(msg, frac)
-
-        if isinstance(script, (str, Path)):
-            script_path = Path(script)
-            if not script_path.exists():
-                script_path = APPROVED_DIR / f"{script}.json"
-            if not script_path.exists():
-                raise FileNotFoundError(f"에피소드 스크립트 파일을 찾을 수 없습니다: {script}")
-            script = StickmanScriptOutput.model_validate_json(script_path.read_text(encoding="utf-8"))
-
+    def prepare_episode(self, script: StickmanScriptOutput) -> Path:
+        """에피소드 문맥(보이스 매칭/장소 판별)을 세팅하고 에피소드 오디오 디렉터리를 돌려준다. 오디오 단계와 렌더 단계가 공유."""
         # 에피소드 전체 문맥 (성별 보이스 매칭 및 소품 연출에 활용)
         self.episode_context = f"{script.episode_title} " + " ".join(
             f"{s.stickman_action} {s.tts_narration} {s.subtitle_text}" for s in script.scenes
@@ -3567,6 +3550,29 @@ class StickmanShortRenderer:
         self.current_episode_id = script.episode_id
         ep_audio_dir = AUDIO_DIR / script.episode_id
         ep_audio_dir.mkdir(parents=True, exist_ok=True)
+        return ep_audio_dir
+
+    # ---------------- 최종 조립 ----------------
+    def render_episode(self, script: Union[StickmanScriptOutput, str, Path],
+                       progress: Optional[Callable[[str, float], None]] = None,
+                       bgm_path: Optional[Union[str, Path]] = None,
+                       bgm_volume: float = 0.15,
+                       vocal_pocketing: bool = True,
+                       audio_plan: Optional[Any] = None) -> Path:
+        def report(msg: str, frac: float) -> None:
+            print(f"[Render {int(frac * 100):3d}%] {msg}")
+            if progress:
+                progress(msg, frac)
+
+        if isinstance(script, (str, Path)):
+            script_path = Path(script)
+            if not script_path.exists():
+                script_path = APPROVED_DIR / f"{script}.json"
+            if not script_path.exists():
+                raise FileNotFoundError(f"에피소드 스크립트 파일을 찾을 수 없습니다: {script}")
+            script = StickmanScriptOutput.model_validate_json(script_path.read_text(encoding="utf-8"))
+
+        ep_audio_dir = self.prepare_episode(script)
 
         tmp = Path(tempfile.mkdtemp(prefix="stickman_"))
         try:
@@ -3575,8 +3581,12 @@ class StickmanShortRenderer:
             master_audio_pcm = array("h")
             for i, scene in enumerate(script.scenes):
                 pose = select_pose(scene.stickman_action, i, total)
-                report(f"씬 {i + 1}/{total} 음성·효과음 합성 ({pose})", i / total * 0.9)
-                wav, dur, hit_t, timeline = self._build_scene_audio(scene, i, pose, tmp)
+                if audio_plan is not None:  # 외부에서 확정한 오디오 타임라인 주입 (audio_timeline.AudioPlan)
+                    report(f"씬 {i + 1}/{total} 확정 오디오 타임라인 사용", i / total * 0.9)
+                    wav, dur, hit_t, timeline = audio_plan.scene_into(i, tmp)
+                else:
+                    report(f"씬 {i + 1}/{total} 음성·효과음 합성 ({pose})", i / total * 0.9)
+                    wav, dur, hit_t, timeline = self._build_scene_audio(scene, i, pose, tmp)
                 scene_pcm = self._decode_pcm(wav)
                 master_audio_pcm.extend(scene_pcm)
 
