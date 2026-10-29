@@ -25,6 +25,13 @@ PENDING_DIR.mkdir(parents=True, exist_ok=True)
 APPROVED_DIR.mkdir(parents=True, exist_ok=True)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+# 모바일 구글 캘린더는 참석자가 주최자 1명뿐이면 하단 [예/아니오] 바를 숨긴다 → 더미 참석자 1명을 함께 넣는다.
+# (sendUpdates="none" 이라 초대 메일은 발송되지 않으며, RSVP 판정에서는 이 봇을 무시한다.)
+RSVP_BOT_ATTENDEE = {
+    "email": "autopilot-bot@stickman.local",
+    "displayName": "스틱맨 자율주행 봇",
+    "responseStatus": "needsAction",
+}
 TIMEZONE = "Asia/Seoul"
 
 
@@ -159,6 +166,58 @@ class CalendarManager:
             self.service = None
             self.dry_run = True
 
+    def get_my_email(self) -> Optional[str]:
+        """인증된 계정의 이메일(calendarList 의 primary ID). 조회 실패 시 환경변수로 대체."""
+        cached = getattr(self, "_my_email", None)
+        if cached:
+            return cached
+        email = None
+        if not self.dry_run and self.service is not None:
+            try:
+                email = self.service.calendarList().get(calendarId="primary").execute().get("id")
+            except Exception as e:
+                print(f"[Calendar] 내 계정 이메일 조회 실패: {e}")
+        if not email:
+            cand = (os.getenv("CALENDAR_USER_EMAIL") or os.getenv("GOOGLE_CALENDAR_USER_EMAIL")
+                    or os.getenv("GOOGLE_CALENDAR_ID") or "")
+            email = cand.strip() if "@" in cand else None
+        self._my_email = email
+        return email
+
+    def _rsvp_attendees(self, my_email: Optional[str]) -> List[Dict[str, Any]]:
+        """[예/아니오] 바가 뜨도록 본인(needsAction, 명시하지 않으면 주최자는 기본 accepted) + 더미 봇."""
+        if not my_email:
+            return []
+        return [
+            {"email": my_email.strip(), "responseStatus": "needsAction", "displayName": "스틱맨 숏폼 총괄 디렉터"},
+            dict(RSVP_BOT_ATTENDEE),
+        ]
+
+    def patch_candidate_attendees(self, serving: Dict[str, Any]) -> List[str]:
+        """이미 등록된 후보 이벤트(+리마인더)에 참석자를 소급 적용. 성공한 이벤트 ID 목록 반환."""
+        if self.dry_run or self.service is None:
+            return []
+        my_email = self.get_my_email()
+        attendees = self._rsvp_attendees(my_email)
+        if not attendees:
+            return []
+        ids = [c.get("calendar_event_id") for c in serving.get("candidates", [])]
+        ids.append(serving.get("reminder_event_id"))
+        done = []
+        for ev_id in ids:
+            if not ev_id or ev_id.startswith("dryrun-"):
+                continue
+            try:
+                self.service.events().patch(
+                    calendarId=self.calendar_id, eventId=ev_id,
+                    body={"attendees": attendees}, sendUpdates="none",
+                ).execute()
+                done.append(ev_id)
+            except Exception as e:
+                print(f"[Calendar] 참석자 패치 실패 ({ev_id}): {e}")
+        serving["attendee_email"] = my_email
+        return done
+
     def _create_event(self, summary: str, description: str, start: datetime,
                       end: datetime, color_id: str,
                       attendees: Optional[List[Dict[str, Any]]] = None,
@@ -178,7 +237,7 @@ class CalendarManager:
             return f"dryrun-{uuid.uuid4().hex[:12]}"
         try:
             created = self.service.events().insert(
-                calendarId=self.calendar_id, body=body
+                calendarId=self.calendar_id, body=body, sendUpdates="none"
             ).execute()
             return created["id"]
         except Exception as e:
@@ -190,19 +249,8 @@ class CalendarManager:
                                target_date: date,
                                attendee_email: Optional[str] = None) -> Dict[str, Any]:
         """오늘자 3대 킬러 후보 대본을 구글 캘린더에 RSVP 초대로 서빙 등록 (오전 09:00 알림 및 15:00 리마인더 연동)."""
-        email_to_invite = (
-            attendee_email
-            or os.getenv("CALENDAR_USER_EMAIL")
-            or os.getenv("GOOGLE_CALENDAR_USER_EMAIL")
-            or os.getenv("GOOGLE_CALENDAR_ID")
-        )
-        attendees_list: List[Dict[str, Any]] = []
-        if email_to_invite and "@" in email_to_invite and email_to_invite != "primary":
-            attendees_list.append({
-                "email": email_to_invite.strip(),
-                "responseStatus": "needsAction",
-                "displayName": "스틱맨 숏폼 총괄 디렉터"
-            })
+        email_to_invite = attendee_email or self.get_my_email()
+        attendees_list = self._rsvp_attendees(email_to_invite)
 
         color_palette = ["9", "5", "11"]  # Blueberry, Banana, Flamingo
         served_candidates = []
@@ -352,9 +400,14 @@ class CalendarManager:
                 try:
                     ev = self.service.events().get(calendarId=self.calendar_id, eventId=ev_id).execute()
                     attendees = ev.get("attendees", [])
-                    invited = (data.get("attendee_email") or "").strip().lower()
+                    invited = (data.get("attendee_email") or self.get_my_email() or "").strip().lower()
+                    bot = RSVP_BOT_ATTENDEE["email"]
                     for att in attendees:
-                        if invited and (att.get("email") or "").strip().lower() != invited:
+                        addr = (att.get("email") or "").strip().lower()
+                        if addr == bot:
+                            continue
+                        # 본인 계정(이메일 일치 또는 self 플래그)의 응답만 인정
+                        if not (att.get("self") or (invited and addr == invited)):
                             continue
                         if att.get("responseStatus") == "accepted":
                             cand["rsvp_status"] = "accepted"
@@ -400,7 +453,8 @@ class CalendarManager:
                                 body={
                                     "summary": f"[✅ 승인 채택] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
                                     "colorId": "10"  # Basil (Green)
-                                }
+                                },
+                                sendUpdates="none",
                             ).execute()
                         else:
                             self.service.events().patch(
@@ -409,7 +463,8 @@ class CalendarManager:
                                 body={
                                     "summary": f"[미채택 후보] {cand['episode_title']}",
                                     "colorId": "8"  # Graphite
-                                }
+                                },
+                                sendUpdates="none",
                             ).execute()
                     except Exception as e:
                         print(f"[Calendar] 이벤트 상태 업데이트 실패: {e}")
@@ -540,7 +595,8 @@ class CalendarManager:
                             body={
                                 "summary": f"[🤖 16:00 자율승인] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
                                 "colorId": "10"  # Green
-                            }
+                            },
+                            sendUpdates="none",
                         ).execute()
                     else:
                         self.service.events().patch(
@@ -549,7 +605,8 @@ class CalendarManager:
                             body={
                                 "summary": f"[타임아웃 미채택] {cand['episode_title']}",
                                 "colorId": "8"  # Graphite
-                            }
+                            },
+                            sendUpdates="none",
                         ).execute()
                 except Exception as e:
                     print(f"[Calendar] 타임아웃 이벤트 패치 실패: {e}")
