@@ -13,6 +13,7 @@ from googleapiclient.discovery import build
 
 from schemas import SceneBeat, StickmanScriptOutput
 from fs_utils import atomic_write_json, atomic_write_text
+import quality_gate
 
 load_dotenv()
 
@@ -25,6 +26,12 @@ APPROVED_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_NAME = "gemini-3.1-pro-preview"
 
 AVOID_RECENT_N = 10  # 프롬프트에 '이미 다룬 소재'로 주입할 최근 에피소드 수
+GATE_MAX_RETRIES = 2  # Quality Gate 불합격 시 재발상 횟수(최초 1회 + 재발상 2회 = 최대 3회 생성)
+EMBED_MODEL = "gemini-embedding-001"  # 소재 유사도 검사용 임베딩
+
+
+class QualityGateError(RuntimeError):
+    """재발상 한도까지 Quality Gate 를 통과하지 못함 → 후보로 저장하지 않는다."""
 
 FALLBACK_KEYWORDS: List[str] = [
     "월요일 출근길 지옥철", "층간소음 윗집", "배달 음식 누락", "회식 강요 팀장",
@@ -185,6 +192,7 @@ SYSTEM_PROMPT = """너는 스틱맨 슬랩스틱 숏폼 전문 수석 연출 감
 - sfx: dramatic_thud, car_horn, comic_punch, cricket_chirp, record_scratch, shock_beep, whoosh, ding 등.
 - pause_after: 정적 시간 (초 단위, 컷 3은 0.8, 일반 컷은 0.0~0.3).
 - episode_title은 클릭을 유도하는 제목, hashtags는 '#' 포함 5~8개.
+- 길이 규격(검수 기준): subtitle_text 는 공백 포함 20자 이내의 짧은 단문, tts_narration 은 컷당 80자 이내(전체 합계 350자 이내), episode_title 은 40자 이내.
 - 모든 텍스트는 한국어."""
 
 
@@ -330,20 +338,53 @@ class EmotionalReverseScriptGenerator:
         parts.append("\n위 데이터에서 열광 포인트만 역공학해 오리지널 스틱맨 숏폼 대본을 생성하라.")
         return "\n".join(parts)
 
+    def _embed(self, texts: List[str]) -> List[List[float]]:
+        """소재 유사도 검사용 임베딩(의미 기반). 실패하면 예외를 던져 게이트가 문자열 유사도로 대체한다."""
+        res = self.client.models.embed_content(model=EMBED_MODEL, contents=texts)
+        return [e.values for e in res.embeddings]
+
     def generate(
         self,
         trends: Optional[List[str]] = None,
         outliers: Optional[List[Dict[str, Any]]] = None,
         custom_topic: Optional[str] = None,
     ) -> StickmanScriptOutput:
-        trends = trends or []
-        outliers = outliers or []
+        """대본 초안 → Quality Gate(안전성·구조·소재 중복) → 합격본만 pending 저장.
+
+        불합격이면 사유와 폐기된 소재를 프롬프트에 붙여 최대 GATE_MAX_RETRIES 회 재발상하고,
+        끝내 통과하지 못하면 저장하지 않고 QualityGateError 를 던진다(큐레이션 배치는 그 후보만 건너뛴다)."""
+        base_prompt = self._build_user_prompt(trends or [], outliers or [], custom_topic)
+        extra = ""
+        rejected: List[Dict[str, str]] = []
+        last_msgs: List[str] = []
+        total = GATE_MAX_RETRIES + 1
+        for attempt in range(total):
+            script = self._draft(base_prompt + extra)
+            report = quality_gate.evaluate(script, load_recent_topics(), embed_fn=self._embed)
+            quality_gate.write_log(script, attempt, report)
+            sim = report.similarity
+            if report.passed:
+                path = PENDING_DIR / f"{script.episode_id}.json"
+                atomic_write_text(path, script.model_dump_json(indent=2))
+                warns = [i.message for i in report.issues if i.severity == "warn"]
+                print(f"[QualityGate] 합격 (시도 {attempt + 1}/{total}, 유사도 {sim.get('best')} {sim.get('method')})"
+                      + (f" 경고: {'; '.join(warns)}" if warns else ""))
+                print(f"[Saved] {path}")
+                return script
+            last_msgs = [i.message for i in report.fails]
+            print(f"[QualityGate] 불합격 (시도 {attempt + 1}/{total}) 「{script.episode_title}」: {'; '.join(last_msgs)}")
+            rejected.append({"title": script.episode_title, "setting": script.analysis.transplanted_setting,
+                             "twist": script.analysis.twist_point})
+            extra = quality_gate.retry_instruction(report, rejected, attempt + 1)
+        raise QualityGateError(f"Quality Gate 불합격 {total}회(재발상 {GATE_MAX_RETRIES}회 소진): {'; '.join(last_msgs)}")
+
+    def _draft(self, base_prompt: str) -> StickmanScriptOutput:
+        """Gemini 로 대본 1건을 생성·보정한다(저장하지 않음)."""
         models_to_try = [
             os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
             "gemini-3.1-pro-preview",
             "gemini-2.5-pro",
         ]
-        base_prompt = self._build_user_prompt(trends, outliers, custom_topic)
         last_err: Optional[Exception] = None
         script: Optional[StickmanScriptOutput] = None
         repaired_fallback: Optional[StickmanScriptOutput] = None
@@ -397,9 +438,6 @@ class EmotionalReverseScriptGenerator:
             scene.scene_number = idx
         script.hashtags = [h if h.startswith("#") else f"#{h}" for h in script.hashtags]
 
-        path = PENDING_DIR / f"{script.episode_id}.json"
-        atomic_write_text(path, script.model_dump_json(indent=2))
-        print(f"[Saved] {path}")
         return script
 
 
