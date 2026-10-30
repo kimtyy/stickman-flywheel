@@ -1,4 +1,5 @@
 """YouTube 채널 1회 원터치 연동 및 인증 도구 (PKCE 에러 방지 & 안정 핸들러)."""
+import argparse
 import json
 import os
 import sys
@@ -23,10 +24,30 @@ TOKEN_PATH = CONFIG_DIR / "youtube_token.json"
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
+
+
+def _granted_scopes() -> set:
+    try:
+        return set(json.loads(TOKEN_PATH.read_text(encoding="utf-8")).get("scopes") or [])
+    except (OSError, ValueError):
+        return set()
+
+# 사용자가 일부 권한을 해제하고 승인해도 oauthlib 가 예외를 던지지 않게 하고, 부족 여부는 아래에서 직접 검사한다.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 auth_code = None
 server_error = None
+
+
+def parse_auth_code(text: str):
+    """리다이렉트된 전체 URL(또는 code 값만 붙여넣은 문자열)에서 (code, error) 추출."""
+    text = text.strip().strip('"').strip("'")
+    if "code=" in text or "error=" in text:
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(text).query or text.lstrip("?"))
+        return (params.get("code") or [None])[0], (params.get("error") or [None])[0]
+    return (text or None), None
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -67,7 +88,8 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-def authenticate_channel():
+def authenticate_channel(manual: bool = False, redirected_url: str = None):
+    global auth_code
     print("=" * 60)
     print("[YouTube Official Channel Connection Tool]")
     print("스틱맨 숏폼 플라이휠 - YouTube 공식 채널 연동 도구")
@@ -84,7 +106,11 @@ def authenticate_channel():
         from google.auth.transport.requests import Request
 
         creds = None
-        if TOKEN_PATH.exists():
+        # 저장된 토큰에 필요한 스코프가 모두 없으면(갱신으로는 스코프를 늘릴 수 없음) 브라우저 재인증으로 간다.
+        scopes_ok = set(SCOPES) <= _granted_scopes()
+        if not scopes_ok and TOKEN_PATH.exists():
+            print(">> 기존 토큰에 필요한 스코프가 부족합니다 -> 브라우저 재인증을 진행합니다.")
+        if TOKEN_PATH.exists() and scopes_ok:
             creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
 
         if not creds or not creds.valid:
@@ -117,10 +143,22 @@ def authenticate_channel():
                     except Exception:
                         pass
 
-                httpd = HTTPServer(("localhost", 8080), OAuthCallbackHandler)
-                print(">> 인증 응답 대기 중 (http://localhost:8080/)...")
-                httpd.handle_request()
-                httpd.server_close()
+                if redirected_url or manual:
+                    # 로컬 수신 서버 없이 처리: 브라우저가 localhost:8080 에서 ERR_CONNECTION_REFUSED 가 떠도
+                    # 주소창의 전체 URL 에 code 가 들어 있으므로 그것을 붙여넣으면 된다.
+                    if not redirected_url:
+                        print("승인 후 브라우저 주소창의 전체 URL(http://localhost:8080/?code=... )을 복사해 붙여넣으세요.")
+                        redirected_url = input("리다이렉트 URL> ")
+                    code, err = parse_auth_code(redirected_url)
+                    if not code:
+                        print(f"\n[오류] URL 에서 code 를 찾지 못했습니다 (error={err})")
+                        return False
+                    auth_code = code
+                else:
+                    httpd = HTTPServer(("localhost", 8080), OAuthCallbackHandler)
+                    print(">> 인증 응답 대기 중 (http://localhost:8080/)...")
+                    httpd.handle_request()
+                    httpd.server_close()
 
                 if not auth_code:
                     print(f"\n[오류] 인증 코드를 받지 못했습니다: {server_error}")
@@ -129,6 +167,11 @@ def authenticate_channel():
                 print(">> 인증 코드 수신 완료! 토큰 교환 중...")
                 flow.fetch_token(code=auth_code)
                 creds = flow.credentials
+                missing = set(SCOPES) - set(creds.scopes or [])
+                if missing:
+                    print("\n[오류] 승인 화면에서 일부 권한이 해제되었습니다. 모든 항목을 체크하고 다시 진행하세요: "
+                          + ", ".join(m.rsplit("/", 1)[-1] for m in sorted(missing)))
+                    return False
 
             TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
             print(f">> 인증 토큰이 안전하게 저장되었습니다: {TOKEN_PATH.name}")
@@ -162,4 +205,8 @@ def authenticate_channel():
 
 
 if __name__ == "__main__":
-    authenticate_channel()
+    ap = argparse.ArgumentParser(description="YouTube 채널 연동/재인증")
+    ap.add_argument("--manual", action="store_true", help="로컬 서버 없이 리다이렉트 URL 을 붙여넣어 인증")
+    ap.add_argument("--url", help="이미 받은 리다이렉트 전체 URL 로 바로 토큰 교환(--manual 불필요)")
+    a = ap.parse_args()
+    authenticate_channel(manual=a.manual, redirected_url=a.url)

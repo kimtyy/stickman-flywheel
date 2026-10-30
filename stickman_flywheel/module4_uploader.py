@@ -24,8 +24,11 @@ CONFIG_DIR = BASE_DIR / "config"
 
 # videos.insert 에는 youtube.upload 하나면 충분하다. 토큰(auth_youtube.py)이 승인받은 범위의 부분집합만 요청해야
 # 갱신 시 invalid_scope 가 나지 않는다 (예전에는 승인된 적 없는 'youtube' 범위를 요청해 갱신이 거부됐다).
+# (토큰이 아예 없어 새로 인증하는 경우에만 쓰이며, 지표 수집용 스코프까지 함께 요청한다. auth_youtube.SCOPES 와 동일하게 유지.)
 YOUTUBE_UPLOAD_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
 # 초기 영상은 사람이 직접 확인한 뒤 수동으로 공개 전환한다: private/unlisted 외의 값은 모두 private 로 강제한다.
@@ -163,7 +166,9 @@ class YouTubeUploader:
             if token_path:
                 from google.oauth2.credentials import Credentials
 
-                creds = Credentials.from_authorized_user_file(str(token_path), YOUTUBE_UPLOAD_SCOPES)
+                # scopes 를 넘기지 않아 토큰에 저장된 스코프를 그대로 유지한다. 좁혀서 로드하면 갱신 후 저장 시
+                # to_json() 이 스코프를 upload 로 덮어써 분석(readonly/analytics) 권한을 잃는다.
+                creds = Credentials.from_authorized_user_file(str(token_path))
 
             # 2. 토큰이 없거나 만료된 경우 OAuth Client Secrets로 갱신 시도
             oauth_path = next((p for p in oauth_candidates if p.exists()), None)

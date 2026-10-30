@@ -1778,175 +1778,91 @@ elif active_nav == "🎬 Step 4: 렌더링 & 배포":
 # ------------------------------------------------------------------------------
 elif active_nav == "📊 Step 5: 성과 분석 & 피드백":
     analytics = AnalyticsEngine()
-    three_tier = analytics.get_three_tier_metrics()
-    daily = three_tier["daily"]
-    weekly = three_tier["weekly"]
-    monthly = three_tier["monthly"]
-    feedback_rules = three_tier["feedback_rules"]
+    cache = analytics.get_metrics()
+    WAIT = "집계 대기"
 
-    # 상단 헤더 카드
+    def _fmt(v, suffix="", nd=0):
+        return WAIT if v is None else f"{v:,.{nd}f}{suffix}"
+
     st.markdown("""
         <div class="stitch-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <div style="font-weight: 850; font-size: 1.25rem; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.45rem;">📊</span> YouTube Analytics 연동 3계층 피드백 루프 & AI 자율 학습
-                </div>
-                <div style="font-size: 0.82rem; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #A5B4FC; padding: 4px 12px; border-radius: 8px; font-weight: 800;">
-                    B2B SaaS / Closed-Loop Live
-                </div>
+            <div style="font-weight: 850; font-size: 1.25rem; color: #FFFFFF; margin-bottom: 8px;">
+                📊 YouTube 실지표 현황
             </div>
             <div style="font-size: 0.9rem; color: #94A3B8; line-height: 1.6;">
-                유튜브 쇼츠 실제 반응 데이터를 <strong>데일리(24시간)·위클리(7일)·먼슬리(30일)</strong> 3계층으로 정밀 분석하고,<br>
-                도출된 성과 패턴을 <strong>Step 1 큐레이션 및 대본 생성 프롬프트</strong>에 실시간 역주입하여 채널을 자율 진화시킵니다.
+                YouTube Data/Analytics API에서 6시간마다 수집한 <strong>실제 수치</strong>만 표시합니다.
+                Analytics 지표(시청 지속률 등)는 신규 영상 기준 반영까지 보통 2~3일이 걸리며, 그 사이에는 '집계 대기'로 표시됩니다.
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # 1. 데일리 (Daily - 최근 24시간 실시간 초동 반응 & 훅 진단)
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                <span>⚡</span> 1. 데일리 분석: 최근 24시간 발행 쇼츠 초동 반응 (Daily Pulse)
-            </div>
-    """, unsafe_allow_html=True)
+    # 수집 상태 배너
+    if not cache:
+        st.warning("📭 아직 수집된 데이터가 없습니다 (집계 대기). 데몬 시작 후 30초 내 첫 수집이 실행되며, "
+                   "수동 실행: `python scheduler_daemon.py --run analytics`")
+    else:
+        status = cache.get("status")
+        stamp = f"마지막 성공 수집: {cache.get('collected_at') or '없음'} · 마지막 시도: {cache.get('last_attempt_at')}"
+        if status == "auth_required":
+            st.error(f"🔐 재인증 필요 — {cache['errors'][0]}  \n터미널에서 `python auth_youtube.py` 실행 후 브라우저에서 승인하세요.  \n{stamp}")
+        elif status == "partial":
+            st.warning(f"⚠️ 일부 수집 실패 — {'; '.join(cache['errors'])}  \n{stamp}")
+        else:
+            st.success(f"✅ 수집 정상 · {stamp} (다음 수집은 데몬이 6시간 주기로 자동 실행)")
 
-    d_col1, d_col2, d_col3, d_col4 = st.columns(4)
-    with d_col1:
-        st.metric("초반 24시간 조회수", f"{daily['initial_views']:,}회", "+4,200 (실시간)")
-    with d_col2:
-        st.metric("조회율 (Viewed vs Swiped)", f"{daily['viewed_rate_pct']}%", f"이탈 {daily['swiped_away_pct']}% 방어")
-    with d_col3:
-        st.metric("오프닝 3초(1씬) 이탈률", f"{daily['scene1_dropoff_pct']}%", "-2.3% (우수)")
-    with d_col4:
-        st.metric("평균 시청 지속시간 (Retention)", f"{daily['avg_retention_pct']}%", "목표치(85%) 초과")
+    videos = (cache or {}).get("videos") or {}
+    if cache and videos:
+        # 1. 영상별
+        st.markdown("<div class='stitch-card'><div style='font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px;'>🎬 영상별 성과</div>", unsafe_allow_html=True)
+        latest_id = max(videos, key=lambda k: videos[k].get("published_at") or "")
+        lv = videos[latest_id]
+        ld, la = lv.get("data") or {}, lv.get("analytics") or {}
+        st.caption(f"최신 발행: {lv.get('title') or latest_id} · https://youtube.com/shorts/{latest_id} · 공개 상태: {lv.get('privacy') or WAIT}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("조회수", _fmt(ld.get("views"), "회"))
+        c2.metric("좋아요", _fmt(ld.get("likes"), "개"))
+        c3.metric("평균 시청 지속률", _fmt(la.get("averageViewPercentage"), "%", 1))
+        c4.metric("구독자 순증", _fmt(la.get("subscribersGained"), "명"))
+        st.dataframe([
+            {"영상": v.get("title") or vid, "ID": vid, "발행": (v.get("published_at") or "")[:16],
+             "공개": v.get("privacy") or WAIT,
+             "조회수": _fmt((v.get("data") or {}).get("views")), "좋아요": _fmt((v.get("data") or {}).get("likes")),
+             "댓글": _fmt((v.get("data") or {}).get("comments")),
+             "평균 시청 지속률": _fmt((v.get("analytics") or {}).get("averageViewPercentage"), "%", 1),
+             "평균 시청 시간(초)": _fmt((v.get("analytics") or {}).get("averageViewDuration"), "", 1)}
+            for vid, v in sorted(videos.items(), key=lambda kv: kv[1].get("published_at") or "", reverse=True)
+        ], use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(f"""
-        <div style="margin-top: 14px; padding: 12px 16px; background: #0F172A; border-left: 4px solid #38BDF8; border-radius: 8px;">
-            <div style="font-size: 0.85rem; font-weight: 800; color: #38BDF8; margin-bottom: 4px;">💡 AI 오프닝 훅 진단 & 프롬프트 긴급 보정</div>
-            <div style="font-size: 0.88rem; color: #E2E8F0; line-height: 1.5;">
-                <strong>최근 영상</strong>: <em>{daily['latest_video_title']}</em> (`{daily['latest_video_id']}`)<br>
-                {daily['ai_prompt_diagnosis']}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        # 2. 채널 윈도우
+        ch = cache.get("channel") or {}
+        st.markdown("<div class='stitch-card'><div style='font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px;'>📈 채널 요약</div>", unsafe_allow_html=True)
+        k1, k2, k3 = st.columns(3)
+        k1.metric("채널", ch.get("title") or WAIT)
+        k2.metric("구독자", _fmt(ch.get("subscribers"), "명"))
+        k3.metric("전체 영상", _fmt(ch.get("video_count"), "개"))
+        for name, label in (("last_7d", "최근 7일"), ("last_30d", "최근 30일")):
+            w = (cache.get("windows") or {}).get(name) or {}
+            a, b, c_ = st.columns(3)
+            a.metric(f"{label} 조회수", _fmt(w.get("views"), "회"))
+            b.metric(f"{label} 구독자 순증", _fmt(w.get("subscribersGained"), "명"))
+            c_.metric(f"{label} 평균 시청 지속률", _fmt(w.get("averageViewPercentage"), "%", 1))
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # 2. 위클리 (Weekly - 최근 7일간 소재별 완독률 비교 & 가중치 재조정)
-    st.markdown(f"""
-        <div class="stitch-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <div style="font-weight: 850; font-size: 1.1rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>📈</span> 2. 위클리 분석: 최근 7일간 소재별 완독률 및 큐레이션 가중치 (Weekly)
-                </div>
-                <div style="font-size: 0.8rem; color: #10B981; font-weight: 700;">
-                    {weekly['action_taken']}
-                </div>
-            </div>
-    """, unsafe_allow_html=True)
-
-    w_col_info1, w_col_info2 = st.columns(2)
-    with w_col_info1:
-        st.metric("주간 총 조회수 (7편)", f"{weekly['total_views']:,}회")
-    with w_col_info2:
-        st.metric("주간 평균 완독률", f"{weekly['avg_completion_rate']}%")
-
-    # 카테고리별 테이블 & 차트
-    perf_data = [
-        {
-            "소재 테마": p["category"],
-            "시청 완독률 (%)": f"{p['completion_rate']}%",
-            "주간 누적 조회수": f"{p['views']:,}회",
-            "큐레이션 가중치": f"x{p['weight']}",
-            "성과 등급": p["status"],
-        }
-        for p in weekly["category_performance"]
-    ]
-    st.dataframe(perf_data, use_container_width=True, hide_index=True)
-
-    # 완독률 비교 차트
-    chart_data = {p["category"]: p["completion_rate"] for p in weekly["category_performance"]}
-    st.bar_chart(chart_data)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # 3. 먼슬리 (Monthly - 월간 성장 및 B2B 재무 지표)
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                <span>🏆</span> 3. 먼슬리 채널 성장 리포트 (Monthly Executive Summary)
-            </div>
-    """, unsafe_allow_html=True)
-
-    m_col1, m_col2, m_col3 = st.columns(3)
-    with m_col1:
-        st.metric("월간 총 누적 조회수", f"{monthly['monthly_total_views']:,}회", "+128,400 (전월대비)")
-    with m_col2:
-        st.metric("구독자 순증", f"+{monthly['subscribers_gained']:,}명", f"총 {monthly['subscribers_total']:,}명")
-    with m_col3:
-        st.metric("예상 광고 수익(추정)", f"₩{monthly['estimated_revenue_krw']:,}", "숏폼 펀드/광고 연동")
-
-    st.markdown("<div style='margin-top: 14px; font-weight: 800; font-size: 0.95rem; color: #E2E8F0;'>🔥 월간 아웃라이어 TOP 3 숏폼 랭킹</div>", unsafe_allow_html=True)
-    for idx, top in enumerate(monthly["top_outliers"]):
-        st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #0F172A; padding: 10px 14px; border-radius: 8px; margin-top: 6px; border: 1px solid rgba(255,255,255,0.06);">
-                <div style="font-size: 0.88rem; font-weight: 700; color: #F8FAFC;">
-                    <span style="color: #F59E0B; margin-right: 6px;">#{idx+1}</span> {top['title']}
-                </div>
-                <div style="font-size: 0.82rem; color: #94A3B8; font-family: 'JetBrains Mono', monospace;">
-                    조회수 <strong>{top['views']:,}회</strong> · VPH: <strong>{top['vph']:,}</strong>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # 4. B2B 상용화 리포트 다운로드 & 폐루프(Closed-Loop) 자율 피드백 엔진
-    st.markdown("""
-        <div class="stitch-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <div style="font-weight: 850; font-size: 1.15rem; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>💼</span> 4. B2B 상용화 리포트 & AI 폐루프(Closed-Loop) 자율 학습 콘솔
-                </div>
-                <div style="font-size: 0.78rem; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); color: #38BDF8; padding: 3px 8px; border-radius: 6px; font-weight: 800;">
-                    SaaS Ready
-                </div>
-            </div>
-            <div style="font-size: 0.88rem; color: #94A3B8; margin-bottom: 16px; line-height: 1.5;">
-                경영진 보고용 1페이지 분석 리포트를 즉시 생성하여 다운로드할 수 있으며, 최신 시청자 행동 데이터를 머신러닝 규칙으로 정제하여 Step 1 큐레이션 엔진에 실시간 피드백합니다.
-            </div>
-    """, unsafe_allow_html=True)
-
-    report_md = analytics.generate_b2b_executive_report()
-
-    col_rep_down, col_loop_btn = st.columns([1.5, 1.5], gap="medium")
+    # 3. 리포트 + 폐루프 학습(차단)
+    st.markdown("<div class='stitch-card'><div style='font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px;'>💼 리포트 & 자율 재학습</div>", unsafe_allow_html=True)
+    report_md = analytics.generate_executive_report()
+    col_rep_down, col_loop_btn = st.columns(2, gap="medium")
     with col_rep_down:
-        st.download_button(
-            "📥 B2B 성과 분석 경영진 1페이지 리포트 다운로드 (Markdown)",
-            data=report_md,
-            file_name=f"stickman_executive_report_{date.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
-            type="primary",
-            use_container_width=True
-        )
+        st.download_button("📥 성과 리포트 다운로드 (Markdown)", data=report_md,
+                           file_name=f"stickman_report_{date.today().strftime('%Y%m%d')}.md",
+                           mime="text/markdown", type="primary", use_container_width=True)
     with col_loop_btn:
-        btn_relearn = st.button("🔄 성과 데이터 기반 AI 폐루프(Closed-Loop) 자율 재학습 즉시 실행", use_container_width=True)
-
-    if btn_relearn:
-        res_learn = analytics.trigger_closed_loop_learning()
-        if res_learn.get("success"):
-            st.session_state["flash"] = f"🧠 AI 자율 피드백 폐루프 업데이트 완료! ({res_learn['updated_rules_count']}개 규칙 Step 1 프롬프트 즉시 주입)"
-            st.balloons()
-            st.rerun()
-
-    # 현재 실시간 프롬프트에 주입 중인 룰 목록 표시
-    curr_rules = feedback_rules.get("active_rules", [])
-    if curr_rules:
-        with st.expander("🧠 현재 Step 1 대본 생성 프롬프트에 실시간 주입 중인 자율 피드백 룰", expanded=True):
-            st.caption(f"최종 갱신 일시: {feedback_rules.get('last_updated', '최근')}")
-            for idx, r in enumerate(curr_rules):
-                st.markdown(f"**{idx+1}.** {r}")
-
-    with st.expander("📄 [B2B 미리보기] 1페이지 경영진 성과 리포트 전문", expanded=False):
+        st.button("🔄 자율 재학습 (비활성화됨)", disabled=True, use_container_width=True,
+                  help="실데이터 기반 규칙 합성이 구현되기 전까지 차단됩니다. 가짜 데이터 학습 방지.")
+    st.caption("🔒 자율 재학습은 실데이터 검증 전까지 꺼져 있습니다. "
+               + ("현재 대본 프롬프트에는 성과 기반 규칙이 주입되지 않습니다." if not analytics.rules_are_trusted()
+                  else "실데이터 기반으로 검증된 규칙만 프롬프트에 주입됩니다."))
+    with st.expander("📄 리포트 미리보기", expanded=False):
         st.markdown(report_md)
-
     st.markdown("</div>", unsafe_allow_html=True)

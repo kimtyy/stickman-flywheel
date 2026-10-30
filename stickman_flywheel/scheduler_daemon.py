@@ -35,6 +35,7 @@ PUBLISH_TIME = time(17, 30)
 HEARTBEAT_SEC = 15
 ALIVE_THRESHOLD_SEC = 60
 TICK_MINUTES = 5
+ANALYTICS_HOURS = 6
 MAX_RENDER_ATTEMPTS = 2
 MAX_UPLOAD_ATTEMPTS = 3
 UPLOAD_RETRY_DELAY = timedelta(minutes=10)
@@ -237,6 +238,19 @@ def step_publish() -> str:
     return "; ".join(done) or "발행 대상 없음"
 
 
+def step_analytics() -> str:
+    """6시간 주기 YouTube 실지표 수집 → analytics_cache.json (읽기 전용이라 Autopilot 과 무관)."""
+    from module5_analytics_feedback import collect_analytics
+    c = collect_analytics()
+    n = len(c.get("videos") or {})
+    pending = sum(1 for v in (c.get("videos") or {}).values() if not v.get("analytics"))
+    if c["status"] == "auth_required":
+        return f"WARN 인증 필요: {c['errors'][0]}"
+    suffix = f" (Analytics 집계 대기 {pending}건)" if pending else ""
+    err = f" / 오류 {len(c['errors'])}건: {c['errors'][0]}" if c["errors"] else ""
+    return f"수집 {c['status']}: 영상 {n}건{suffix}{err}"
+
+
 def step_tick() -> str:
     """주기 점검(재시작 캐치업 포함): 오전 서빙 누락 보충 → RSVP → 타임아웃 → 렌더 → 발행."""
     if not is_autopilot_enabled():
@@ -266,6 +280,7 @@ JOBS: Dict[str, Callable[[], str]] = {
     "timeout": _gated(lambda: step_timeout_approve() + " | " + step_render()),
     "publish": _gated(step_publish),
     "tick": step_tick,
+    "analytics": step_analytics,
 }
 
 
@@ -324,6 +339,8 @@ def main() -> int:
     sched.add_job(_guarded("publish", JOBS["publish"]), "cron", hour=PUBLISH_TIME.hour, minute=PUBLISH_TIME.minute, id="publish", **opts)
     sched.add_job(_guarded("tick", JOBS["tick"]), "interval", minutes=TICK_MINUTES, id="tick",
                   next_run_time=datetime.now() + timedelta(seconds=5), **opts)
+    sched.add_job(_guarded("analytics", JOBS["analytics"]), "interval", hours=ANALYTICS_HOURS, id="analytics",
+                  next_run_time=datetime.now() + timedelta(seconds=30), **opts)
 
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
     _log(f"데몬 시작 (pid={os.getpid()}) — serve {SERVE_TIME:%H:%M} / remind {REMIND_TIME:%H:%M} / "

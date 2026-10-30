@@ -1,213 +1,228 @@
-"""YouTube Analytics 연동 3계층 피드백 루프 및 B2B 상용화 리포트 생성 엔진."""
+"""YouTube 실제 성과 지표 수집(Data API + Analytics API) 및 피드백 룰 관리.
+
+수집 결과는 pipeline_outputs/analytics_cache.json 에 저장되며 대시보드는 이 캐시만 읽는다.
+수집이 안 된 값은 절대 추정/목업으로 채우지 않고 None 으로 남겨 '집계 대기'로 표시한다.
+"""
 import json
-import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fs_utils import atomic_write_json, atomic_write_text
+from fs_utils import atomic_write_json
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "pipeline_outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+CONFIG_DIR = BASE_DIR / "config"
 
 FEEDBACK_RULES_FILE = OUTPUTS_DIR / "feedback_rules.json"
 ANALYTICS_CACHE_FILE = OUTPUTS_DIR / "analytics_cache.json"
+TOKEN_FILE = CONFIG_DIR / "youtube_token.json"
+
+SCOPE_READONLY = "https://www.googleapis.com/auth/youtube.readonly"
+SCOPE_ANALYTICS = "https://www.googleapis.com/auth/yt-analytics.readonly"
+
+# 프롬프트에 주입 가능한 규칙은 실데이터 학습 결과(source 마커)뿐이다.
+REAL_RULES_SOURCE = "real_analytics"
+
+# Analytics API 는 신규 영상 반영에 보통 2~3일이 걸린다.
+ANALYTICS_METRICS = "views,likes,comments,shares,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained"
+ANALYTICS_KEYS = ANALYTICS_METRICS.split(",")
+
+
+class AnalyticsAuthError(RuntimeError):
+    """토큰 없음/스코프 부족 — `python auth_youtube.py` 재인증이 필요."""
+
+
+def _load_credentials():
+    """저장된 토큰의 스코프를 그대로 사용(좁히지 않음). 필요한 스코프가 없으면 AnalyticsAuthError."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+
+    if not TOKEN_FILE.exists():
+        raise AnalyticsAuthError(f"토큰 파일 없음: {TOKEN_FILE.name}")
+    granted = set(json.loads(TOKEN_FILE.read_text(encoding="utf-8")).get("scopes") or [])
+    missing = [s.rsplit("/", 1)[-1] for s in (SCOPE_READONLY, SCOPE_ANALYTICS) if s not in granted]
+    if missing:
+        raise AnalyticsAuthError(f"토큰에 스코프 부족({', '.join(missing)}): `python auth_youtube.py` 로 재인증 필요")
+    creds = Credentials.from_authorized_user_file(str(TOKEN_FILE))
+    if not creds.valid:
+        if not (creds.expired and creds.refresh_token):
+            raise AnalyticsAuthError("토큰 갱신 불가, 재인증 필요")
+        creds.refresh(Request())
+        atomic_write_json(TOKEN_FILE, json.loads(creds.to_json()))
+    return creds
+
+
+def _published_videos() -> List[Dict[str, Any]]:
+    """골든타임 큐에서 실제 발행된(video_id 보유) 영상만."""
+    from module2_calendar_manager import get_golden_time_queue
+    return [i for i in get_golden_time_queue() if i.get("status") == "published" and i.get("video_id")]
+
+
+def _num(v: Any) -> Optional[float]:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _query_analytics(yta, start: date, end: date, filters: Optional[str] = None,
+                     dimensions: Optional[str] = None) -> List[List[Any]]:
+    kw: Dict[str, Any] = dict(ids="channel==MINE", startDate=start.isoformat(), endDate=end.isoformat(),
+                              metrics=ANALYTICS_METRICS)
+    if filters:
+        kw["filters"] = filters
+    if dimensions:
+        kw["dimensions"] = dimensions
+    return yta.reports().query(**kw).execute().get("rows") or []
+
+
+def collect_analytics() -> Dict[str, Any]:
+    """발행된 영상 전체의 실지표를 수집해 analytics_cache.json 에 저장하고 캐시를 반환.
+
+    실패 시 직전 성공 데이터는 보존하고 status/errors 만 갱신한다."""
+    from googleapiclient.discovery import build
+
+    now = datetime.now()
+    prev = read_analytics_cache() or {}
+    cache: Dict[str, Any] = {k: prev.get(k) for k in ("channel", "videos", "windows", "collected_at")}
+    cache.update(last_attempt_at=now.isoformat(timespec="seconds"), errors=[])
+
+    try:
+        creds = _load_credentials()
+    except AnalyticsAuthError as e:
+        cache.update(status="auth_required", errors=[str(e)])
+        atomic_write_json(ANALYTICS_CACHE_FILE, cache)
+        return cache
+
+    queue = _published_videos()
+    yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    yta = build("youtubeAnalytics", "v2", credentials=creds, cache_discovery=False)
+    errors: List[str] = []
+    videos: Dict[str, Any] = {}
+    for item in queue:
+        videos[item["video_id"]] = {
+            "episode_id": item["episode_id"], "title": item.get("episode_title"),
+            "published_at": item.get("published_at"), "privacy": None, "data": None, "analytics": None,
+        }
+
+    # 1) Data API: 조회수/좋아요/댓글 (거의 실시간) + 공개 상태
+    ids = list(videos)
+    for i in range(0, len(ids), 50):
+        try:
+            res = yt.videos().list(part="snippet,statistics,status", id=",".join(ids[i:i + 50])).execute()
+            for v in res.get("items", []):
+                s = v.get("statistics", {})
+                videos[v["id"]].update(
+                    title=v["snippet"]["title"], privacy=v["status"]["privacyStatus"],
+                    data={"views": _num(s.get("viewCount")), "likes": _num(s.get("likeCount")),
+                          "comments": _num(s.get("commentCount"))})
+        except Exception as e:
+            errors.append(f"videos.list 실패: {type(e).__name__}: {e}")
+
+    # 2) Analytics API: 영상별 지표(시청 지속률 등). 반영 전이면 rows 가 비어 analytics=None 유지.
+    if ids:
+        start = min(datetime.fromisoformat(v["published_at"]).date() for v in videos.values() if v["published_at"])
+        try:
+            rows = _query_analytics(yta, start, date.today(), filters="video==" + ",".join(ids), dimensions="video")
+            for row in rows:
+                videos[row[0]]["analytics"] = dict(zip(ANALYTICS_KEYS, map(_num, row[1:])))
+        except Exception as e:
+            errors.append(f"Analytics 영상별 조회 실패: {type(e).__name__}: {e}")
+
+    # 3) 채널 전체: 구독자/영상 수 + 7일·30일 합계
+    channel = prev.get("channel")
+    try:
+        ch = yt.channels().list(part="snippet,statistics", mine=True).execute()["items"][0]
+        cs = ch["statistics"]
+        channel = {"id": ch["id"], "title": ch["snippet"]["title"],
+                   "subscribers": None if cs.get("hiddenSubscriberCount") else _num(cs.get("subscriberCount")),
+                   "video_count": _num(cs.get("videoCount")), "total_views": _num(cs.get("viewCount"))}
+    except Exception as e:
+        errors.append(f"channels.list 실패: {type(e).__name__}: {e}")
+
+    windows = dict(prev.get("windows") or {})
+    for name, days in (("last_7d", 7), ("last_30d", 30)):
+        try:
+            rows = _query_analytics(yta, date.today() - timedelta(days=days), date.today())
+            windows[name] = dict(zip(ANALYTICS_KEYS, map(_num, rows[0]))) if rows else None
+        except Exception as e:
+            errors.append(f"Analytics {name} 조회 실패: {type(e).__name__}: {e}")
+
+    ok = not errors
+    cache.update(status="ok" if ok else "partial", errors=errors, channel=channel, videos=videos, windows=windows,
+                 collected_at=now.isoformat(timespec="seconds") if (ok or videos) else cache.get("collected_at"))
+    atomic_write_json(ANALYTICS_CACHE_FILE, cache)
+    return cache
+
+
+def read_analytics_cache() -> Optional[Dict[str, Any]]:
+    """대시보드/리포트용. 캐시가 없거나 깨졌으면 None(= 집계 대기)."""
+    try:
+        return json.loads(ANALYTICS_CACHE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 class AnalyticsEngine:
-    """유튜브 쇼츠 성과 분석 및 AI 폐루프(Closed-Loop) 자율 피드백 오케스트레이터."""
-
-    def __init__(self) -> None:
-        self.youtube_api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
-        self._ensure_default_rules()
-
-    def _ensure_default_rules(self) -> None:
-        """기본 피드백 룰 파일 초기화."""
-        if not FEEDBACK_RULES_FILE.exists():
-            default_rules = {
-                "last_updated": datetime.now().isoformat(),
-                "active_rules": [
-                    "오프닝 1~2초 구간: 첫 대사는 반드시 '감탄사 + 쉼표' 후 즉각적인 도발 질문으로 시작하여 3초 이탈률 12% 이하로 방어할 것.",
-                    "편의점·서비스 진상 미러링 소재는 시청 지속시간 93% 이상을 기록하므로 큐레이션 가중치 1.45배 우대 적용.",
-                    "클라이맥스 6~7씬: 슬랩스틱 사이다 키워드(참교육, 으아악, 납작)를 음향 효과와 1:1 동기화하여 완독률 극대화.",
-                    "자막 텍스트(subtitle_text)는 10자 이내 볼드체 단문으로 구성하여 모바일 시선 분산을 원천 차단할 것."
-                ],
-                "category_weights": {
-                    "편의점·서비스 진상 미러링": 1.45,
-                    "층간소음·주거 갈등 사이다": 1.32,
-                    "사회·직장 얌체 갑질 참교육": 1.15
-                }
-            }
-            atomic_write_json(FEEDBACK_RULES_FILE, default_rules)
+    """실지표 캐시 조회 + 피드백 룰 관리. 목업/추정값은 생성하지 않는다."""
 
     def get_feedback_rules(self) -> Dict[str, Any]:
-        """현재 가동 중인 자율 학습 피드백 룰 반환."""
-        self._ensure_default_rules()
         try:
             return json.loads(FEEDBACK_RULES_FILE.read_text(encoding="utf-8"))
         except Exception:
             return {"active_rules": [], "category_weights": {}}
 
-    def get_three_tier_metrics(self) -> Dict[str, Any]:
-        """데일리, 위클리, 먼슬리 3계층 성과 분석 데이터 반환."""
-        # YouTube Analytics 실시간 수집 및 현실적 고성능 쇼츠 벤치마크 지표 연동
-        daily_metrics = {
-            "period": "최근 24시간 (Daily)",
-            "latest_video_id": "20261025_193151",
-            "latest_video_title": "편의점 5만원권 집어던진 진상 손님 참교육",
-            "initial_views": 18450,
-            "viewed_rate_pct": 78.6,       # Viewed vs Swiped (70% 이상이면 대박 쇼츠)
-            "swiped_away_pct": 21.4,
-            "scene1_dropoff_pct": 11.2,     # 1씬(오프닝 3초) 이탈률
-            "avg_retention_pct": 92.4,      # 평균 시청 지속률
-            "ai_prompt_diagnosis": "오프닝 3초 훅에서 '야, 거스름돈 빨리 줘!' 도발 대사와 동전 챙그랑 효과음이 유효하여 스와이프 이탈률을 21.4%로 압축 성공. 차기 대본에서도 질문형 반문 훅 유지 권고."
-        }
+    def rules_are_trusted(self) -> bool:
+        return self.get_feedback_rules().get("source") == REAL_RULES_SOURCE
 
-        weekly_metrics = {
-            "period": "최근 7일간 (Weekly)",
-            "total_views": 142800,
-            "total_shorts_count": 7,
-            "avg_completion_rate": 89.2,
-            "category_performance": [
-                {
-                    "category": "편의점·서비스 진상 미러링",
-                    "views": 68400,
-                    "completion_rate": 94.5,
-                    "weight": 1.45,
-                    "status": "🔥 최고 인기"
-                },
-                {
-                    "category": "층간소음·주거 갈등 사이다",
-                    "views": 49200,
-                    "completion_rate": 91.8,
-                    "weight": 1.32,
-                    "status": "⭐ 지속 상승"
-                },
-                {
-                    "category": "사회·직장 얌체 갑질 참교육",
-                    "views": 25200,
-                    "completion_rate": 86.4,
-                    "weight": 1.15,
-                    "status": "안정적 유지"
-                }
-            ],
-            "action_taken": "편의점/일상 서비스 미러링 큐레이션 가중치 +45% 자동 상향 반영 완료."
-        }
-
-        monthly_metrics = {
-            "period": "최근 30일 누적 (Monthly)",
-            "monthly_total_views": 589400,
-            "subscribers_gained": 3840,
-            "subscribers_total": 14200,
-            "estimated_revenue_krw": 1850000,
-            "top_outliers": [
-                {"title": "편의점 5만원권 던진 진상 거스름돈 날리기", "views": 184200, "vph": 1420},
-                {"title": "새벽 2시 윗집 발망치 빌런 우퍼 스피커 역관광", "views": 142500, "vph": 1180},
-                {"title": "중고거래 현장에서 3만원 깎아달라는 빌런 차단", "views": 98400, "vph": 820}
-            ]
-        }
-
-        return {
-            "daily": daily_metrics,
-            "weekly": weekly_metrics,
-            "monthly": monthly_metrics,
-            "feedback_rules": self.get_feedback_rules()
-        }
+    def get_metrics(self) -> Optional[Dict[str, Any]]:
+        return read_analytics_cache()
 
     def trigger_closed_loop_learning(self) -> Dict[str, Any]:
-        """성과 데이터를 분석하여 Step 1 큐레이션 프롬프트 지침에 실시간 피드백 룰 자동 업데이트."""
-        metrics = self.get_three_tier_metrics()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """차단됨: 실데이터 기반 규칙 합성 로직이 아직 없다. 목업으로 feedback_rules.json 을 덮어쓰지 않는다."""
+        return {"success": False, "blocked": True,
+                "reason": "실데이터 수집 정상화 전까지 자율 재학습이 비활성화되어 있습니다(가짜 데이터 학습 방지)."}
 
-        # 성과 기반 새 룰 합성
-        new_rules = [
-            f"[{now_str} 학습] 최근 24시간 조회율 {metrics['daily']['viewed_rate_pct']}% 달성: 오프닝 3초 이탈률을 11.2%로 억제한 '도발 대사 + 쉼표 호흡' 패턴을 전 에피소드에 필수 적용.",
-            f"[{now_str} 학습] 주간 완독률 1위({metrics['weekly']['category_performance'][0]['completion_rate']}%): '편의점·서비스 진상 미러링' 테마 큐레이션 우선순위 최고 단계 유지.",
-            "결말 사이다 씬(S6~S7): 타격음(punch_hit)과 납작 슬랩스틱 모션을 1:1 결합하여 공유 및 댓글 참여 유도율 극대화."
-        ]
+    def generate_executive_report(self) -> str:
+        """캐시의 실제 수치만으로 만든 성과 리포트(마크다운). 값이 없으면 '집계 대기'."""
+        c = read_analytics_cache()
+        wait = "집계 대기"
 
-        data = {
-            "last_updated": now_str,
-            "active_rules": new_rules,
-            "category_weights": {
-                c["category"]: c["weight"]
-                for c in metrics["weekly"]["category_performance"]
-            }
-        }
-        atomic_write_json(FEEDBACK_RULES_FILE, data)
-        return {"success": True, "updated_rules_count": len(new_rules), "rules": new_rules}
+        def f(v: Any, suffix: str = "", nd: int = 0) -> str:
+            return wait if v is None else f"{v:,.{nd}f}{suffix}"
 
-    def generate_b2b_executive_report(self) -> str:
-        """B2B 상용화용 1페이지 쇼츠 성과 분석 경영진 보고서(마크다운/PDF용) 생성."""
-        data = self.get_three_tier_metrics()
-        d = data["daily"]
-        w = data["weekly"]
-        m = data["monthly"]
-
-        report_md = f"""# 📊 [B2B 솔루션] AI 스틱맨 숏폼 자율 플라이휠 성과 분석 리포트
-**발행 일시**: {datetime.now().strftime('%Y년 %m월 %d일 %H:%M')} | **시스템 모드**: 무인 자율 플라이휠 (Autopilot Live)
-
----
-
-## 1. 24시간 실시간 데일리 성과 (Daily Pulse)
-- **최근 발행 쇼츠**: {d['latest_video_title']} (`{d['latest_video_id']}`)
-- **초반 24시간 조회수**: **{d['initial_views']:,} 회**
-- **조회율 (Viewed vs Swiped)**: **{d['viewed_rate_pct']}%** (스와이프 이탈률: {d['swiped_away_pct']}%)
-- **오프닝 3초(씬 1) 이탈률**: **{d['scene1_dropoff_pct']}%** (최상위권 유지)
-- **평균 시청 지속시간 (Retention)**: **{d['avg_retention_pct']}%**
-> 💡 **AI 훅 진단**: {d['ai_prompt_diagnosis']}
-
----
-
-## 2. 7일간 소재별 완독률 분석 (Weekly Intelligence)
-- **주간 총 조회수**: **{w['total_views']:,} 회** (발행 편수: {w['total_shorts_count']}편)
-- **주간 평균 완독률**: **{w['avg_completion_rate']}%**
-
-| 소재 카테고리 | 주간 누적 조회수 | 시청 완독률 | 큐레이션 가중치 | 성과 등급 |
-|:---|:---:|:---:|:---:|:---:|
-| {w['category_performance'][0]['category']} | {w['category_performance'][0]['views']:,} 회 | {w['category_performance'][0]['completion_rate']}% | x{w['category_performance'][0]['weight']} | {w['category_performance'][0]['status']} |
-| {w['category_performance'][1]['category']} | {w['category_performance'][1]['views']:,} 회 | {w['category_performance'][1]['completion_rate']}% | x{w['category_performance'][1]['weight']} | {w['category_performance'][1]['status']} |
-| {w['category_performance'][2]['category']} | {w['category_performance'][2]['views']:,} 회 | {w['category_performance'][2]['completion_rate']}% | x{w['category_performance'][2]['weight']} | {w['category_performance'][2]['status']} |
-
-> ⚙️ **가중치 자동 조정**: {w['action_taken']}
-
----
-
-## 3. 월간 채널 성장 지표 (Monthly Executive Summary)
-- **월간 누적 조회수**: **{m['monthly_total_views']:,} 회**
-- **구독자 순증**: **+{m['subscribers_gained']:,} 명** (누적 총 {m['subscribers_total']:,} 명)
-- **예상 광고 수익(추정)**: **약 ₩{m['estimated_revenue_krw']:,}**
-
-### 🏆 월간 아웃라이어 TOP 3 숏폼
-1. **{m['top_outliers'][0]['title']}** — 조회수 {m['top_outliers'][0]['views']:,}회 (VPH: {m['top_outliers'][0]['vph']:,})
-2. **{m['top_outliers'][1]['title']}** — 조회수 {m['top_outliers'][1]['views']:,}회 (VPH: {m['top_outliers'][1]['vph']:,})
-3. **{m['top_outliers'][2]['title']}** — 조회수 {m['top_outliers'][2]['views']:,}회 (VPH: {m['top_outliers'][2]['vph']:,})
-
----
-
-## 4. AI 폐루프(Closed-Loop) 자율 피드백 규칙 적용 현황
-{chr(10).join(f"- {rule}" for rule in data['feedback_rules'].get('active_rules', []))}
-
----
-*Report Generated by Stickman Shorts Autonomous Flywheel AI Studio (B2B SaaS Edition)*
-"""
-        return report_md.strip()
+        lines = [f"# 스틱맨 숏폼 플라이휠 성과 리포트",
+                 f"**생성**: {datetime.now():%Y-%m-%d %H:%M} | **마지막 수집**: {(c or {}).get('collected_at') or '없음'}", ""]
+        if not c or not c.get("videos"):
+            lines.append("> 수집된 지표가 없습니다(집계 대기).")
+            return "\n".join(lines)
+        ch = c.get("channel") or {}
+        lines += [f"## 채널: {ch.get('title', wait)}",
+                  f"- 구독자 {f(ch.get('subscribers'), '명')} · 영상 {f(ch.get('video_count'), '개')}", ""]
+        for name, label in (("last_7d", "최근 7일"), ("last_30d", "최근 30일")):
+            w = (c.get("windows") or {}).get(name) or {}
+            lines.append(f"- {label}: 조회수 {f(w.get('views'))} · 구독자 순증 {f(w.get('subscribersGained'))} · "
+                         f"평균 시청 지속률 {f(w.get('averageViewPercentage'), '%', 1)}")
+        lines += ["", "## 영상별", "| 영상 | 조회수 | 좋아요 | 평균 시청 지속률 |", "|:--|--:|--:|--:|"]
+        for vid, v in c["videos"].items():
+            d, a = v.get("data") or {}, v.get("analytics") or {}
+            lines.append(f"| {v.get('title') or vid} (`{vid}`) | {f(d.get('views'))} | {f(d.get('likes'))} | "
+                         f"{f(a.get('averageViewPercentage'), '%', 1)} |")
+        return "\n".join(lines)
 
 
 def get_active_feedback_prompt() -> str:
-    """Step 1 대본 생성 시 주입할 자율 학습 프롬프트 가이드 문자열 반환."""
-    if FEEDBACK_RULES_FILE.exists():
-        try:
-            data = json.loads(FEEDBACK_RULES_FILE.read_text(encoding="utf-8"))
-            rules = data.get("active_rules", [])
-            if rules:
-                return "\n## [AI 자율 피드백 폐루프(Closed-Loop) 성과 반영 지침]\n" + "\n".join(
-                    f"{idx+1}. {r}" for idx, r in enumerate(rules)
-                ) + "\n"
-        except Exception:
-            pass
-    return ""
+    """Step 1 대본 생성에 주입할 피드백 룰. 실데이터 학습 결과(source 마커)가 있을 때만 반환한다."""
+    try:
+        data = json.loads(FEEDBACK_RULES_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    rules = data.get("active_rules", [])
+    if data.get("source") != REAL_RULES_SOURCE or not rules:
+        return ""
+    return "\n## [성과 데이터 기반 피드백 지침]\n" + "\n".join(f"{i + 1}. {r}" for i, r in enumerate(rules)) + "\n"
