@@ -57,10 +57,15 @@ def _load_credentials():
     return creds
 
 
-def _published_videos() -> List[Dict[str, Any]]:
-    """골든타임 큐에서 실제 발행된(video_id 보유) 영상만."""
+# 영상 가용성: ok=조회됨, unavailable=발행됐는데 API 가 반환하지 않음(삭제/비공개), deleted=큐에서 삭제 처리된 영상
+AVAIL_OK, AVAIL_UNAVAILABLE, AVAIL_DELETED = "ok", "unavailable", "deleted"
+UNAVAILABLE_LABEL = "삭제/비공개"
+
+
+def _tracked_videos() -> List[Dict[str, Any]]:
+    """골든타임 큐에서 지표 추적 대상(video_id 보유): 발행됨 + 삭제 처리됨(표시용, API 조회 없음)."""
     from module2_calendar_manager import get_golden_time_queue
-    return [i for i in get_golden_time_queue() if i.get("status") == "published" and i.get("video_id")]
+    return [i for i in get_golden_time_queue() if i.get("status") in ("published", "deleted") and i.get("video_id")]
 
 
 def _num(v: Any) -> Optional[float]:
@@ -99,7 +104,7 @@ def collect_analytics() -> Dict[str, Any]:
         atomic_write_json(ANALYTICS_CACHE_FILE, cache)
         return cache
 
-    queue = _published_videos()
+    queue = _tracked_videos()
     yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
     yta = build("youtubeAnalytics", "v2", credentials=creds, cache_discovery=False)
     errors: List[str] = []
@@ -108,13 +113,21 @@ def collect_analytics() -> Dict[str, Any]:
         videos[item["video_id"]] = {
             "episode_id": item["episode_id"], "title": item.get("episode_title"),
             "published_at": item.get("published_at"), "privacy": None, "data": None, "analytics": None,
+            "availability": AVAIL_DELETED if item.get("status") == "deleted" else AVAIL_OK,
         }
 
     # 1) Data API: 조회수/좋아요/댓글 (거의 실시간) + 공개 상태
-    ids = list(videos)
+    ids = [vid for vid, v in videos.items() if v["availability"] != AVAIL_DELETED]
     for i in range(0, len(ids), 50):
+        batch = ids[i:i + 50]
         try:
-            res = yt.videos().list(part="snippet,statistics,status", id=",".join(ids[i:i + 50])).execute()
+            res = yt.videos().list(part="snippet,statistics,status", id=",".join(batch)).execute()
+            # 호출은 성공했는데 응답에 없는 ID = 삭제/비공개(본인 토큰이라 본인 비공개 영상은 반환된다).
+            # 호출이 예외로 실패한 경우에는 표시하지 않는다(일시 오류를 삭제로 오판하지 않기 위해).
+            returned = {v["id"] for v in res.get("items", [])}
+            for vid in batch:
+                if vid not in returned:
+                    videos[vid]["availability"] = AVAIL_UNAVAILABLE
             for v in res.get("items", []):
                 s = v.get("statistics", {})
                 videos[v["id"]].update(
@@ -125,12 +138,14 @@ def collect_analytics() -> Dict[str, Any]:
             errors.append(f"videos.list 실패: {type(e).__name__}: {e}")
 
     # 2) Analytics API: 영상별 지표(시청 지속률 등). 반영 전이면 rows 가 비어 analytics=None 유지.
-    if ids:
-        start = min(datetime.fromisoformat(v["published_at"]).date() for v in videos.values() if v["published_at"])
+    live = [vid for vid in ids if videos[vid]["availability"] == AVAIL_OK]
+    if live:
+        start = min(datetime.fromisoformat(videos[vid]["published_at"]).date() for vid in live if videos[vid]["published_at"])
         try:
-            rows = _query_analytics(yta, start, date.today(), filters="video==" + ",".join(ids), dimensions="video")
+            rows = _query_analytics(yta, start, date.today(), filters="video==" + ",".join(live), dimensions="video")
             for row in rows:
-                videos[row[0]]["analytics"] = dict(zip(ANALYTICS_KEYS, map(_num, row[1:])))
+                if row[0] in videos:
+                    videos[row[0]]["analytics"] = dict(zip(ANALYTICS_KEYS, map(_num, row[1:])))
         except Exception as e:
             errors.append(f"Analytics 영상별 조회 실패: {type(e).__name__}: {e}")
 
@@ -210,6 +225,9 @@ class AnalyticsEngine:
                          f"평균 시청 지속률 {f(w.get('averageViewPercentage'), '%', 1)}")
         lines += ["", "## 영상별", "| 영상 | 조회수 | 좋아요 | 평균 시청 지속률 |", "|:--|--:|--:|--:|"]
         for vid, v in c["videos"].items():
+            if v.get("availability", AVAIL_OK) != AVAIL_OK:
+                lines.append(f"| {v.get('title') or vid} (`{vid}`) | {UNAVAILABLE_LABEL} | {UNAVAILABLE_LABEL} | {UNAVAILABLE_LABEL} |")
+                continue
             d, a = v.get("data") or {}, v.get("analytics") or {}
             lines.append(f"| {v.get('title') or vid} (`{vid}`) | {f(d.get('views'))} | {f(d.get('likes'))} | "
                          f"{f(a.get('averageViewPercentage'), '%', 1)} |")

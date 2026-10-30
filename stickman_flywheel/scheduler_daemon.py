@@ -243,10 +243,12 @@ def step_analytics() -> str:
     from module5_analytics_feedback import collect_analytics
     c = collect_analytics()
     n = len(c.get("videos") or {})
-    pending = sum(1 for v in (c.get("videos") or {}).values() if not v.get("analytics"))
+    vids = (c.get("videos") or {}).values()
+    pending = sum(1 for v in vids if v.get("availability", "ok") == "ok" and not v.get("analytics"))
+    gone = sum(1 for v in vids if v.get("availability", "ok") != "ok")
     if c["status"] == "auth_required":
         return f"WARN 인증 필요: {c['errors'][0]}"
-    suffix = f" (Analytics 집계 대기 {pending}건)" if pending else ""
+    suffix = (f" (Analytics 집계 대기 {pending}건)" if pending else "") + (f" (삭제/비공개 {gone}건)" if gone else "")
     err = f" / 오류 {len(c['errors'])}건: {c['errors'][0]}" if c["errors"] else ""
     return f"수집 {c['status']}: 영상 {n}건{suffix}{err}"
 

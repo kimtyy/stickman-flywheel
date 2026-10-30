@@ -1814,7 +1814,8 @@ elif active_nav == "📊 Step 5: 성과 분석 & 피드백":
     if cache and videos:
         # 1. 영상별
         st.markdown("<div class='stitch-card'><div style='font-weight: 850; font-size: 1.1rem; color: #FFFFFF; margin-bottom: 12px;'>🎬 영상별 성과</div>", unsafe_allow_html=True)
-        latest_id = max(videos, key=lambda k: videos[k].get("published_at") or "")
+        live_ids = [k for k, v in videos.items() if v.get("availability", "ok") == "ok"] or list(videos)
+        latest_id = max(live_ids, key=lambda k: videos[k].get("published_at") or "")
         lv = videos[latest_id]
         ld, la = lv.get("data") or {}, lv.get("analytics") or {}
         st.caption(f"최신 발행: {lv.get('title') or latest_id} · https://youtube.com/shorts/{latest_id} · 공개 상태: {lv.get('privacy') or WAIT}")
@@ -1823,15 +1824,20 @@ elif active_nav == "📊 Step 5: 성과 분석 & 피드백":
         c2.metric("좋아요", _fmt(ld.get("likes"), "개"))
         c3.metric("평균 시청 지속률", _fmt(la.get("averageViewPercentage"), "%", 1))
         c4.metric("구독자 순증", _fmt(la.get("subscribersGained"), "명"))
-        st.dataframe([
-            {"영상": v.get("title") or vid, "ID": vid, "발행": (v.get("published_at") or "")[:16],
-             "공개": v.get("privacy") or WAIT,
-             "조회수": _fmt((v.get("data") or {}).get("views")), "좋아요": _fmt((v.get("data") or {}).get("likes")),
-             "댓글": _fmt((v.get("data") or {}).get("comments")),
-             "평균 시청 지속률": _fmt((v.get("analytics") or {}).get("averageViewPercentage"), "%", 1),
-             "평균 시청 시간(초)": _fmt((v.get("analytics") or {}).get("averageViewDuration"), "", 1)}
-            for vid, v in sorted(videos.items(), key=lambda kv: kv[1].get("published_at") or "", reverse=True)
-        ], use_container_width=True, hide_index=True)
+        def _row(vid, v):
+            base = {"영상": v.get("title") or vid, "ID": vid, "발행": (v.get("published_at") or "")[:16]}
+            if v.get("availability", "ok") != "ok":   # API 가 반환하지 않거나 삭제 처리된 영상: '집계 대기'와 구분
+                gone = "삭제/비공개"
+                return {**base, "공개": gone, "조회수": gone, "좋아요": gone, "댓글": gone,
+                        "평균 시청 지속률": gone, "평균 시청 시간(초)": gone}
+            return {**base, "공개": v.get("privacy") or WAIT,
+                    "조회수": _fmt((v.get("data") or {}).get("views")), "좋아요": _fmt((v.get("data") or {}).get("likes")),
+                    "댓글": _fmt((v.get("data") or {}).get("comments")),
+                    "평균 시청 지속률": _fmt((v.get("analytics") or {}).get("averageViewPercentage"), "%", 1),
+                    "평균 시청 시간(초)": _fmt((v.get("analytics") or {}).get("averageViewDuration"), "", 1)}
+        st.dataframe([_row(vid, v) for vid, v in
+                      sorted(videos.items(), key=lambda kv: kv[1].get("published_at") or "", reverse=True)],
+                     use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         # 2. 채널 윈도우
