@@ -2161,17 +2161,18 @@ def make_overlay(title: str, idx: int, total: int, subtitle: str, action: str) -
     size, sub_lines = 110, []
     while size >= 56:
         font = get_font(size)
-        sub_lines = wrap_text(subtitle, font, 940)
+        sub_lines = wrap_text(subtitle, font, 780)   # 세이프존: x=100~880 (우측 버튼 영역 회피)
         if len(sub_lines) <= 2:
             break
         size -= 6
     sub_lines = sub_lines[:2]
     font = get_font(size)
-    ly = 1680 - (len(sub_lines) - 1) * size * 0.58
+    # 쇼츠 세이프존: 마지막 줄 중심을 하단 28%(y=1380)에 고정하고 줄이 늘면 위로 쌓는다(하단 채널명/제목/버튼 영역 회피)
+    ly = 1380 - (len(sub_lines) - 1) * size * 1.22
     for ln in sub_lines:
-        d.text((W / 2, ly), ln, font=font, fill=(0, 0, 0), anchor="mm", stroke_width=20, stroke_fill=(0, 0, 0))
-        d.text((W / 2, ly), ln, font=font, fill=(255, 255, 255), anchor="mm", stroke_width=10, stroke_fill=(255, 255, 255))
-        d.text((W / 2, ly), ln, font=font, fill=(255, 230, 0), anchor="mm")
+        d.text((490, ly), ln, font=font, fill=(0, 0, 0), anchor="mm", stroke_width=20, stroke_fill=(0, 0, 0))
+        d.text((490, ly), ln, font=font, fill=(255, 255, 255), anchor="mm", stroke_width=10, stroke_fill=(255, 255, 255))
+        d.text((490, ly), ln, font=font, fill=(255, 230, 0), anchor="mm")
         ly += size * 1.22
     return ov
 

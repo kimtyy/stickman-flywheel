@@ -261,6 +261,41 @@ def _outlined(d: ImageDraw.ImageDraw, xy, text, font, fill, stroke=(0, 0, 0), sw
     d.text(xy, text, font=font, fill=fill, stroke_width=sw, stroke_fill=stroke, anchor=anchor)
 
 
+def _fit_lines(d: ImageDraw.ImageDraw, text: str, get_font, sizes, max_w: int, max_lines: int, truncate: bool = True):
+    """sizes(큰 순)를 차례로 시도해 max_lines 줄 안에 들어가는 첫 글자 크기를 고른다. (size, font, lines).
+
+    전부 넘치면 truncate=True 는 최소 크기에서 마지막 줄을 단어/구두점 경계에서 끊고 '...' 를 붙이며,
+    truncate=False 는 None 을 돌려준다(호출자가 다른 레이아웃을 시도)."""
+    text = text.strip()
+    for size in sizes:
+        font = get_font(size)
+        lines = _wrap(d, text, font, max_w)
+        if len(lines) <= max_lines:
+            return size, font, lines
+    if not truncate:
+        return None
+    size = sizes[-1]
+    font = get_font(size)
+    kept = _wrap(d, text, font, max_w)[:max_lines]
+    last = kept[-1].rstrip()
+    cut = max(last.rfind(" "), last.rfind(","))
+    if cut > len(last) * 0.5:                      # 뒤쪽 절반 안에 경계가 있으면 거기서 끊는다
+        last = last[:cut]
+    last = last.rstrip(" ,.:;·")
+    while last and d.textlength(last + "...", font=font) > max_w:
+        last = last[:-1].rstrip(" ,.:;·")
+    kept[-1] = last + "..."
+    return size, font, kept
+
+
+# 쇼츠 세이프존(1080x1920): 상단 상태바/메뉴바(~12%), 하단 채널명·제목·버튼(하단 25%)을 피한다.
+TITLE_BAR_TOP, TITLE_BAR_BOTTOM = 230, 340   # 상단 상황 자막(제목 바): 화면 상단 12%~17.7%
+BUBBLE_TOP = TITLE_BAR_BOTTOM + 20           # 말풍선/해설 박스는 제목 바 바로 아래에서 시작
+SUB_BASELINE_Y = 1380                        # 하단 강조 자막의 마지막 줄 중심(하단에서 28%). 줄이 늘면 위로 쌓는다
+SUB_CX, SUB_MAX_W = 490, 780                 # 하단 자막 영역 x=100~880: 우측 좋아요/댓글 버튼(x≳930) 회피
+SUB_SIZES = list(range(76, 43, -4))          # 76→44: 1~2줄에 안 들어가면 단계적으로 축소
+TITLE_MAX_W = 900
+
 SAFE_MARGIN = 70   # 인물 경계 상자 바깥 여백(px). 줌/팬 창은 항상 [상자+여백]을 포함한다
 
 
@@ -340,9 +375,15 @@ class CutPainter:
     def _overlays(self, fr: Image.Image, d: ImageDraw.ImageDraw, t: float) -> None:
         gf = self.get_font
         # 상단 제목 바
-        d.rounded_rectangle((40, 40, W - 40, 150), 22, fill=(14, 14, 22, 215), outline=(255, 214, 10), width=3)
-        tf = gf(40)
-        _outlined(d, (W // 2, 95), self.title[:22], tf, (255, 214, 10), sw=0)
+        d.rounded_rectangle((40, TITLE_BAR_TOP, W - 40, TITLE_BAR_BOTTOM), 22, fill=(14, 14, 22, 215), outline=(255, 214, 10), width=3)
+        # 제목: 한 줄에 맞게 40→32 축소, 안 되면 두 줄 38→30, 그래도 넘치면 마지막 줄 말줄임(문장 중간 절단 방지)
+        fit = (_fit_lines(d, self.title, gf, range(40, 31, -2), TITLE_MAX_W, 1, truncate=False)
+               or _fit_lines(d, self.title, gf, range(38, 29, -2), TITLE_MAX_W, 2))
+        tsize, tf, tlines = fit
+        tlh = round(tsize * 1.2)
+        ty0 = (TITLE_BAR_TOP + TITLE_BAR_BOTTOM) / 2 - tlh * (len(tlines) - 1) / 2
+        for k, ln in enumerate(tlines):
+            _outlined(d, (W // 2, ty0 + tlh * k), ln, tf, (255, 214, 10), sw=0)
         # 현재 화자 말풍선 / 해설 박스
         cur = next((x for x in self.tl if x["start"] - 0.05 <= t <= x["end"] + 0.08), None)
         if cur:
@@ -354,7 +395,7 @@ class CutPainter:
             bh = lh * len(lines) + 46
             if spk in ("A", "B"):
                 cx = 300 if spk == "A" else 780
-                bx0 = max(30, min(W - 30 - bw, cx - bw / 2)); by0 = 230
+                bx0 = max(30, min(W - 30 - bw, cx - bw / 2)); by0 = BUBBLE_TOP
                 d.rounded_rectangle((bx0, by0, bx0 + bw, by0 + bh), 38, fill=(255, 255, 255, 245),
                                     outline=(15, 15, 25), width=6)
                 tx = cx + (-40 if spk == "A" else 40)
@@ -362,7 +403,7 @@ class CutPainter:
                           fill=(255, 255, 255, 245), outline=(15, 15, 25))
                 col = (15, 15, 25)
             else:
-                bx0 = (W - bw) / 2; by0 = 230
+                bx0 = (W - bw) / 2; by0 = BUBBLE_TOP
                 d.rounded_rectangle((bx0, by0, bx0 + bw, by0 + bh), 24, fill=(255, 241, 190, 245), outline=(130, 90, 10), width=5)
                 col = (70, 40, 0)
             for k, ln in enumerate(lines):
@@ -377,10 +418,11 @@ class CutPainter:
                 _outlined(d, (W // 2, 880), word, gf(size), (255, 235, 40) + (int(255 * fade),), stroke=(30, 0, 0), sw=12)
         # 하단 자막
         if self.sub0 <= t <= self.sub1 and (self.scene.subtitle_text or "").strip():
-            sf = gf(76)
-            lines = _wrap(d, self.scene.subtitle_text.strip(), sf, 940)[:2]
+            # 외곽선(sw)이 폭 밖으로 나가지 않게 여유를 두고, 2줄 안에 들어가는 가장 큰 글자 크기를 고른다
+            size, sf, lines = _fit_lines(d, self.scene.subtitle_text, gf, SUB_SIZES, SUB_MAX_W - 2 * 9, 2)
+            sw, gap = max(5, round(size * 0.12)), round(size * 1.26)
             for k, ln in enumerate(lines):
-                _outlined(d, (W // 2, 1640 + 96 * k), ln, sf, (255, 255, 255), sw=9)
+                _outlined(d, (SUB_CX, SUB_BASELINE_Y - gap * (len(lines) - 1 - k)), ln, sf, (255, 255, 255), sw=sw)
 
 
 # --------------------------------------------------------------------------- 일관성 측정 (VLM 채점)
