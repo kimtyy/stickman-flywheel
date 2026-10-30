@@ -945,7 +945,7 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
                     <span style="font-size: 0.70rem; color: {step3_color}; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 6px;">{step3_badge}</span>
                 </div>
                 <div style="font-size: 0.95rem; font-weight: 800; color: #FFFFFF;">⚡ 16:00 자동승인 대기</div>
-                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">적중률 1위 대본 자동 채택</div>
+                <div style="font-size: 0.74rem; color: #94A3B8; margin-top: 3px;">직전과 다른 테마 우선(순환) 자동 채택</div>
             </div>
             <div style="background: #0F172A; border: 1.5px solid {step4_border}; border-radius: 12px; padding: 12px 14px; text-align: center;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -1020,7 +1020,7 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
 
         for idx, c in enumerate(active_serving.get("candidates", [])):
             c_no = c.get("candidate_no", idx + 1)
-            hit_pct = c.get("predicted_hit_rate", 95)
+            cand_theme = c.get("category") or "-"
             cand_ep_id = c.get("episode_id")
             is_winner = (cand_ep_id == winner_id)
 
@@ -1049,7 +1049,7 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
             with cand_cols[idx]:
                 border_color = "#10B981" if is_winner else "rgba(56, 189, 248, 0.4)"
                 badge_bg = "rgba(16, 185, 129, 0.2)" if is_winner else "rgba(56, 189, 248, 0.15)"
-                badge_text = "✅ [채택 완료]" if is_winner else f"🏆 적중률 {hit_pct}%"
+                badge_text = "✅ [채택 완료]" if is_winner else f"🎯 {cand_theme}"
                 card_bg = "#0B132B" if is_winner else "#0F172A"
 
                 st.markdown(f"""
@@ -1260,7 +1260,7 @@ if active_nav == "🚀 Step 1: 기획 & 대본":
                 st.markdown("##### 🌇 퇴근길 골든타임(17:30~18:00) 예약 배포 대기열 현황")
                 for q in golden_queue:
                     err = f" · 사유: `{q['last_error']}`" if q.get("last_error") else ""
-                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 적중률: **{q.get('predicted_hit_rate')}%** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}` · 시도: {q.get('attempts', 0)}{err}")
+                    st.markdown(f"- **{q['episode_title']}** (ID: `{q['episode_id']}`) · 테마: **{q.get('category') or '-'}** · 예정 시각: `{q.get('scheduled_publish_time')}` · 상태: `{q.get('status')}` · 시도: {q.get('attempts', 0)}{err}")
             else:
                 st.info("현재 골든타임 대기열에 등록된 영상이 없습니다.")
 

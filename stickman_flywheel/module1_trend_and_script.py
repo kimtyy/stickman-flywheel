@@ -24,6 +24,8 @@ APPROVED_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL_NAME = "gemini-3.1-pro-preview"
 
+AVOID_RECENT_N = 10  # 프롬프트에 '이미 다룬 소재'로 주입할 최근 에피소드 수
+
 FALLBACK_KEYWORDS: List[str] = [
     "월요일 출근길 지옥철", "층간소음 윗집", "배달 음식 누락", "회식 강요 팀장",
     "엘리베이터 알바 눈치", "주차 자리 새치기", "카톡 읽씹", "월급날 통장 스치듯 지나감",
@@ -135,6 +137,7 @@ SYSTEM_PROMPT = """너는 스틱맨 슬랩스틱 숏폼 전문 수석 연출 감
 2. 댓글과 반응에서 시청자가 열광/분노/공감한 '심리적 결핍·분노·카타르시스(열광 포인트)'만 추출해 analysis.extracted_core_desire에 기록한다.
 3. 그 감정선을 완전히 다른 '새로운 일상 공간'(예: 편의점, 주차장, 헬스장, 중고거래 현장, 엘리베이터, 사무실 등)의 스틱맨 슬랩스틱 상황극으로 재창조하고 analysis.transplanted_setting에 기록한다.
 4. 마지막에는 뻔한 예상을 뒤집는 블랙코미디/사이다 반전을 넣고 analysis.twist_point에 기록한다.
+5. 입력에 '이미 다룬 소재 목록(Avoid List)'이 있으면, 그 목록과 유사한 사건·공간·빌런의 행동·반전은 절대 반복하지 않는다. 모든 에피소드는 이전과 확연히 달라야 한다.
 
 [주인공(빼딱맨) 고정 외형 프롬프트 (character_prompt)]
 모든 컷의 `character_prompt`에는 아래 프롬프트를 기본 탑재한다:
@@ -188,6 +191,50 @@ SYSTEM_PROMPT = """너는 스틱맨 슬랩스틱 숏폼 전문 수석 연출 감
 
 REQUIRED_CUTS = 6
 MAX_ATTEMPTS_PER_MODEL = 2
+
+_EPISODE_ID_RE = re.compile(r"^\d{8}_\d{6}$")
+
+
+def load_recent_topics(limit: int = AVOID_RECENT_N) -> List[Dict[str, str]]:
+    """최근 생성/승인된 에피소드(approved + pending, episode_id 최신순) 중 limit 편의 제목·공간·반전.
+
+    같은 배치의 앞선 후보도 pending 에 저장되므로 후보 간 중복도 함께 막는다."""
+    files: Dict[str, Path] = {}
+    for d in (APPROVED_DIR, PENDING_DIR):
+        for p in d.glob("*.json"):
+            if _EPISODE_ID_RE.match(p.stem):
+                files[p.stem] = p
+    rows: List[Dict[str, str]] = []
+    seen_titles = set()
+    for stem in sorted(files, reverse=True):
+        try:
+            data = json.loads(files[stem].read_text(encoding="utf-8"))
+            a = data.get("analysis") or {}
+            row = {
+                "title": str(data.get("episode_title", ""))[:80],
+                "setting": str(a.get("transplanted_setting", ""))[:120],
+                "twist": str(a.get("twist_point", ""))[:160],
+            }
+        except (OSError, ValueError, AttributeError):
+            continue
+        if row["title"] in seen_titles:      # 동일 제목 후보가 슬롯을 낭비하지 않도록 건너뛴다
+            continue
+        seen_titles.add(row["title"])
+        rows.append(row)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def build_avoid_prompt(topics: List[Dict[str, str]]) -> str:
+    if not topics:
+        return ""
+    lines = [f"## 이미 다룬 소재 목록 (Avoid List) - 최근 {len(topics)}편"]
+    for i, t in enumerate(topics, 1):
+        lines.append(f"{i}. 「{t['title']}」 / 공간: {t['setting']} / 반전: {t['twist']}")
+    lines.append("[강제 규칙] 위 목록과 유사한 사건·공간·빌런의 행동·반전(예: 편의점 카드 던지기 등)은 절대 반복하지 말 것. "
+                 "공간, 사건, 반전 방식이 모두 위 목록과 확연히 달라야 한다.")
+    return "\n".join(lines) + "\n"
 
 
 def _trim_to_required_cuts(scenes: List[SceneBeat]) -> List[SceneBeat]:
@@ -262,6 +309,14 @@ class EmotionalReverseScriptGenerator:
                     parts.append(f"   - 베스트댓글: {c.strip()[:300]}")
         elif not custom_topic:
             parts.append("(수집된 영상 없음 — 트렌드 키워드에서 대중 감정을 추론하라)")
+
+        # 최근 소재 배제 메모리(Avoid List)
+        try:
+            avoid = build_avoid_prompt(load_recent_topics())
+            if avoid:
+                parts.append(avoid)
+        except Exception as e:  # noqa: BLE001  메모리 로드 실패가 후보 생성을 막지 않도록
+            print(f"[Script] Avoid List 로드 실패(무시): {e}")
 
         # Closed-Loop AI 자율 피드백 룰 주입
         try:
@@ -351,21 +406,18 @@ class EmotionalReverseScriptGenerator:
 DAILY_CURATION_THEMES: List[Dict[str, Any]] = [
     {
         "category": "편의점·서비스 진상 미러링",
-        "theme_prompt": "편의점/호프집/식당 등 일상 서비스 공간에서 동전/카드를 집어던지거나 반말하며 억지 부리는 갑질 진상 손님 vs 눈에는 눈, 이에는 이로 똑같이 시원하게 맞받아치는 주인공의 기상천외 미러링 참교육",
+        "theme_prompt": "편의점/카페/식당/마트/약국 등 일상 서비스 공간에서 갑질·무례한 요구·억지를 부리는 진상 손님 vs 눈에는 눈, 이에는 이로 똑같이 시원하게 맞받아치는 주인공의 기상천외 미러링 참교육 (공간과 진상 행동의 유형은 매번 새롭게 고를 것)",
         "archetype": "mirroring_cashier",
-        "base_hit_rate": 96,
     },
     {
         "category": "층간소음·주거 갈등 사이다",
         "theme_prompt": "새벽 발망치 쿵쿵대는 윗집 층간소음 빌런이나 주차선 2칸 물고 뻔뻔한 주차 빌런 vs 물리적 타격감과 상상초월 기발한 두뇌 플레이로 역관광하는 통쾌한 사이다",
         "archetype": "neighbor_noise",
-        "base_hit_rate": 93,
     },
     {
         "category": "사회·직장 얌체 갑질 참교육",
         "theme_prompt": "중고거래 현장 억지 네고 빌런, 헬스장 기구 독점 폰보기 빌런, 단톡방 눈치 제로 빌런 vs 뼈 때리는 논리와 슬랩스틱 한방으로 참교육하는 에피소드",
         "archetype": "social_freeloader",
-        "base_hit_rate": 91,
     },
 ]
 
@@ -394,14 +446,10 @@ def run_curation_batch(count: int = 3, progress_callback=None) -> List[Dict[str,
             print(f"[Curation] 후보 {candidate_no} 생성 실패 → 건너뜀: {e}")
             continue
 
-        # 현실적인 예상 적중률 산출 (91%~97%)
-        hit_rate = cfg["base_hit_rate"] + (hash(script.episode_id) % 3)
-
         candidate_data = {
             "candidate_no": candidate_no,
             "episode_id": script.episode_id,
             "episode_title": script.episode_title,
-            "predicted_hit_rate": hit_rate,
             "category": cfg["category"],
             "script": script,
         }

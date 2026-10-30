@@ -133,7 +133,7 @@ def step_remind() -> str:
 
 
 def step_timeout_approve() -> str:
-    """16:00 이후 미승인이면 적중률 1위 자동 승인(날짜 검증은 module2 에서 수행)."""
+    """16:00 이후 미승인이면 테마 순환 규칙으로 자동 승인(날짜 검증은 module2 에서 수행)."""
     res = CalendarManager().check_and_trigger_timeout_auto_approval()
     return res.get("message") or res.get("reason", "-")
 

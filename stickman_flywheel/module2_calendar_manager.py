@@ -89,6 +89,43 @@ def enqueue_golden_time(item: Dict[str, Any]) -> None:
         atomic_write_json(GOLDEN_TIME_QUEUE_FILE, queue)
 
 
+def _theme_names() -> List[str]:
+    """테마 순환 순서(= module1 DAILY_CURATION_THEMES 순서). module1 을 불러올 수 없으면 빈 목록."""
+    try:
+        from module1_trend_and_script import DAILY_CURATION_THEMES
+        return [t["category"] for t in DAILY_CURATION_THEMES]
+    except Exception as e:  # noqa: BLE001
+        print(f"[Calendar] 테마 목록 로드 실패 → 후보 번호 순 선택: {e}")
+        return []
+
+
+def _theme_of_queue_item(item: Dict[str, Any], names: List[str]) -> Optional[str]:
+    """큐 항목의 테마. category 가 없는 구 항목은 후보 번호 = 테마 순서(1~3)로 환산한다."""
+    if item.get("category"):
+        return item["category"]
+    no = item.get("candidate_no")
+    return names[no - 1] if isinstance(no, int) and 1 <= no <= len(names) else None
+
+
+def pick_rotation_winner(candidates: List[Dict[str, Any]]) -> tuple:
+    """16:00 자동 승인 후보 선정: 직전에 승인/발행된 테마의 '다음 테마'를 순환(Round-Robin)으로 우선 선택.
+
+    이력이 없거나 직전 테마를 알 수 없으면 후보 번호가 가장 낮은 후보. 반환: (winner, 사유)."""
+    ordered = sorted(candidates, key=lambda c: c.get("candidate_no", 99))
+    names = _theme_names()
+    history = [q for q in get_golden_time_queue() if q.get("approved_at")]
+    last = max(history, key=lambda q: q["approved_at"]) if history else None
+    last_cat = _theme_of_queue_item(last, names) if last else None
+    if names and last_cat in names:
+        i = names.index(last_cat)
+        for k in range(1, len(names) + 1):          # 직전 테마의 다음 → 그다음 … (마지막에 직전 테마 자신)
+            want = names[(i + k) % len(names)]
+            for c in ordered:
+                if c.get("category") == want:
+                    return c, f"직전 테마 '{last_cat}' → 순환 다음 테마 '{want}'"
+    return ordered[0], "직전 테마 이력 없음 → 후보 1번"
+
+
 def update_golden_queue_item(episode_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
     """대기열 항목 상태/필드 갱신. 항목이 없으면 None."""
     with _QUEUE_LOCK:
@@ -264,10 +301,9 @@ class CalendarManager:
         for idx, cand in enumerate(candidates):
             c_no = cand.get("candidate_no", idx + 1)
             script: StickmanScriptOutput = cand["script"]
-            hit_rate = cand.get("predicted_hit_rate", 95)
             cat = cand.get("category", "사이다 참교육")
 
-            summary = f"[후보 {c_no}] {script.episode_title} (적중률 {hit_rate}%)"
+            summary = f"[후보 {c_no}] {script.episode_title} · {cat}"
 
             scene_brief = "\n".join(
                 f"S{s.scene_number} ({s.duration_sec}s): {s.subtitle_text} / {s.tts_narration[:55]}"
@@ -275,8 +311,7 @@ class CalendarManager:
             )
 
             description = (
-                f"🏆 [후보 {c_no}] 테마: {cat}\n"
-                f"📊 예상 쇼츠 적중률: {hit_rate}%\n\n"
+                f"🏆 [후보 {c_no}] 테마: {cat}\n\n"
                 f"📌 감정 역공학 브리핑:\n"
                 f"- 버린 껍데기: {script.analysis.discarded_surface_topic}\n"
                 f"- 코어 욕망: {script.analysis.extracted_core_desire}\n"
@@ -287,7 +322,7 @@ class CalendarManager:
                 f"📱 [모바일 원클릭 승인 안내]\n"
                 f"스마트폰 캘린더 상단의 '[예(Yes)]'를 터치하시면,\n"
                 f"이 대본이 [승인 완료]되어 스틱맨 렌더링 파이프라인으로 즉시 자동 연결됩니다!\n"
-                f"⚠️ [부재중 무인 자율주행]: 오후 16:00까지 미응답 시 1위 대본이 자동 승인되어 17:30 골든타임에 자동 배포됩니다.\n"
+                f"⚠️ [부재중 무인 자율주행]: 오후 16:00까지 미응답 시 테마 순환 규칙(직전과 다른 테마 우선)으로 후보가 자동 승인되어 17:30 골든타임에 자동 배포됩니다.\n"
                 f"--------------------------------------------------\n"
                 f"<!-- EPISODE_ID: {script.episode_id} -->\n"
                 f"<!-- CANDIDATE_NO: {c_no} -->\n"
@@ -317,7 +352,6 @@ class CalendarManager:
                 "candidate_no": c_no,
                 "episode_id": script.episode_id,
                 "episode_title": script.episode_title,
-                "predicted_hit_rate": hit_rate,
                 "category": cat,
                 "calendar_event_id": event_id,
                 "rsvp_status": "needsAction",
@@ -328,11 +362,11 @@ class CalendarManager:
         remind_dt = datetime.combine(target_date, time(15, 0))
         remind_end = remind_dt + timedelta(minutes=20)
         reminder_event_id = self._create_event(
-            summary="🔔 [리마인드] 16:00 적중률 1위 대본 자동 승인 예고 (골든타임 17:30 배포)",
+            summary="🔔 [리마인드] 16:00 테마 순환 자동 승인 예고 (골든타임 17:30 배포)",
             description=(
                 "⚡ [부재중 무인 자율 주행 모드 가동 중]\n\n"
                 "오늘 16:00까지 캘린더 RSVP([예]) 응답이 없을 경우,\n"
-                "후보 중 '예상 적중률 1위' 대본이 자동으로 [승인 완료] 처리되며,\n"
+                "직전 발행과 다른 테마의 후보(테마 순환)가 자동으로 [승인 완료] 처리되며,\n"
                 "백그라운드 렌더링 착수 후 퇴근길 골든 타임(17:30~18:00) 유튜브 예약 배포 대기열에 등록됩니다.\n\n"
                 "원하시는 특정 대본이 있다면 16:00 전에 [예]를 눌러주세요!"
             ),
@@ -451,7 +485,7 @@ class CalendarManager:
                                 calendarId=self.calendar_id,
                                 eventId=ev_id,
                                 body={
-                                    "summary": f"[✅ 승인 채택] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
+                                    "summary": f"[✅ 승인 채택] {cand['episode_title']} · {cand.get('category', '')}",
                                     "colorId": "10"  # Basil (Green)
                                 },
                                 sendUpdates="none",
@@ -480,7 +514,7 @@ class CalendarManager:
                 "episode_id": ep_id,
                 "episode_title": winner_candidate.get("episode_title", ep_id),
                 "candidate_no": c_no,
-                "predicted_hit_rate": winner_candidate.get("predicted_hit_rate"),
+                "category": winner_candidate.get("category"),
                 "approved_at": datetime.now().isoformat(),
                 "approved_by": "rsvp",
                 "scheduled_publish_time": f"{serving_day}T17:30:00+09:00",
@@ -560,13 +594,8 @@ class CalendarManager:
         if not candidates:
             return {"triggered": False, "reason": "후보 대본 목록이 비어있습니다."}
 
-        # 예상 적중률 1위 후보 자동 선정 (predicted_hit_rate 기준 내림차순)
-        sorted_candidates = sorted(
-            candidates,
-            key=lambda c: c.get("predicted_hit_rate", 0),
-            reverse=True
-        )
-        winner = sorted_candidates[0]
+        # 테마 순환(Round-Robin): 직전 승인/발행 테마의 다음 테마 후보를 자동 선정
+        winner, pick_reason = pick_rotation_winner(candidates)
         c_no = winner["candidate_no"]
         ep_id = winner["episode_id"]
 
@@ -593,7 +622,7 @@ class CalendarManager:
                             calendarId=self.calendar_id,
                             eventId=ev_id,
                             body={
-                                "summary": f"[🤖 16:00 자율승인] {cand['episode_title']} (적중률 {cand['predicted_hit_rate']}%)",
+                                "summary": f"[🤖 16:00 자율승인] {cand['episode_title']} · {cand.get('category', '')}",
                                 "colorId": "10"  # Green
                             },
                             sendUpdates="none",
@@ -626,7 +655,7 @@ class CalendarManager:
             description=(
                 f"🚀 [트래픽 피크 타임 무인 자율 발행 대기열]\n\n"
                 f"- 에피소드: {winner['episode_title']} (ID: {ep_id})\n"
-                f"- 예상 적중률: {winner.get('predicted_hit_rate', 95)}% (1위 자동승인)\n"
+                f"- 선정 사유: {pick_reason} (16:00 자동승인)\n"
                 f"- 배포 예정 시간: {golden_start.strftime('%H:%M')} ~ {golden_end.strftime('%H:%M')}\n"
                 f"- 상태: 렌더링 후 유튜브 예약 업로드 대기열 등록 완료"
             ),
@@ -651,7 +680,7 @@ class CalendarManager:
             "episode_id": ep_id,
             "episode_title": winner["episode_title"],
             "candidate_no": c_no,
-            "predicted_hit_rate": winner.get("predicted_hit_rate", 95),
+            "category": winner.get("category"),
             "approved_at": datetime.now().isoformat(),
             "approved_by": "autopilot_timeout_1600",
             "scheduled_publish_time": f"{target_date_obj}T17:30:00+09:00",
@@ -672,7 +701,7 @@ class CalendarManager:
             "episode_id": ep_id,
             "script": script,
             "golden_time": "17:30 ~ 18:00",
-            "message": f"🤖 [16:00 타임아웃 무인 자율 승인 발동] 예상 적중률 1위(후보 {c_no}, {winner.get('predicted_hit_rate')}%) '{winner['episode_title']}' 승인 완료 → 17:30 골든타임 발행 대기열 등록!"
+            "message": f"🤖 [16:00 타임아웃 무인 자율 승인 발동] 테마 순환 선정(후보 {c_no}, {winner.get('category')}; {pick_reason}) '{winner['episode_title']}' 승인 완료 → 17:30 골든타임 발행 대기열 등록!"
         }
 
     def get_current_serving_status(self) -> Optional[Dict[str, Any]]:
