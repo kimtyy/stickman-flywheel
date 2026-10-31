@@ -1,6 +1,6 @@
 """후킹 썸네일 자동 합성기 (규칙 기반, API 비용 0).
 
-배경 = 컷 5(결정타) 원본 일러스트, 상단 = 상황 요약 1열 + 도파민 키워드, 하단 = 사이다 펀치라인, 그 위에 만화 효과음 오버레이.
+배경 = 컷 5(결정타) 원본 일러스트, 상단 = 예고형 도파민 타이틀 + 호기심 문구(결말 비공개), 만화 효과음 오버레이. 콜드 오픈 인트로 0초 프레임과 동일 이미지.
 산출물(에피소드당 4파일): <ep>_thumbnail.png/.jpg (1080x1920 세로), <ep>_thumbnail_16x9.png/.jpg (1280x720 검색/홈용).
 JPEG 는 유튜브 썸네일 업로드 한도(2MB) 안으로 품질을 낮춰가며 저장한다.
 
@@ -29,12 +29,12 @@ RED = (235, 30, 50)
 BLACK = (0, 0, 0)
 
 # 키워드 풀: 대본의 impact_keyword 가 있으면 "<키워드> 설치완료" 를 후보에 넣고, 없거나 다른 후보와 섞어 에피소드별로 고정 선택한다.
-THEME_KEYWORDS = {
-    "convenience": ["진상 퇴치 완료", "빌런 영업종료", "인과응보 즉시배송"],
-    "noise": ["발망치 응징 완료", "층간소음 참교육", "윗집 사이다 투하"],
-    "work": ["얌체 참교육 완료", "갑질 컷!", "직장 사이다 투하"],
+TEASER_KEYWORDS = {
+    "convenience": ["진상 퇴치 1초 전", "빌런 영업종료 카운트다운", "진상 응징 시동 완료"],
+    "noise": ["발망치 응징 1초 전", "윗집 참교육 카운트다운", "층간 응징 시동 완료"],
+    "work": ["갑질 참교육 1초 전", "얌체 응징 카운트다운", "사이다 시동 완료"],
 }
-GENERIC_KEYWORDS = ["참교육 설치완료", "인과응보", "사이다 풀충전"]
+GENERIC_TEASER = ["참교육 1초 전", "인과응보 시동 완료", "참교육 카운트다운"]
 THEME_HINTS = (
     ("noise", ("층간", "윗집", "아랫집", "발망치", "소음", "이웃")),
     ("convenience", ("편의점", "계산대", "카운터", "손님", "알바", "매장", "카페", "식당")),
@@ -75,10 +75,22 @@ def detect_theme(script: Dict[str, Any]) -> Optional[str]:
 
 
 def pick_keyword(script: Dict[str, Any]) -> str:
+    """콜드 오픈/썸네일 타이틀: 결말을 말하지 않고 기대감만 올리는 '예고형' 문구."""
     scenes = script.get("scenes", [])
     kw = next((str(s.get("impact_keyword") or "").strip() for s in scenes if s.get("scene_number") == 5), "")
-    pool = ([f"{kw} 설치완료"] if kw else []) + THEME_KEYWORDS.get(detect_theme(script) or "", []) + GENERIC_KEYWORDS
+    pool = ([f"{kw} 1초 전"] if kw else []) + TEASER_KEYWORDS.get(detect_theme(script) or "", []) + GENERIC_TEASER
     return pool[zlib.crc32(str(script.get("episode_id", "")).encode()) % len(pool)]
+
+
+_OUTCOME_TAIL = re.compile(r"(의\s*)?((비참|처참|통쾌|허무|참담)한\s*)?(최후|결말|말로)$|생긴\s*일$|벌어진\s*일$")
+
+
+def pick_curiosity(script: Dict[str, Any]) -> str:
+    """제목 첫 구절에서 결과를 암시하는 꼬리('~의 최후', '~생긴 일')를 떼고 호기심형 의문문으로 만든다."""
+    head = pick_headline(script)
+    base = _OUTCOME_TAIL.sub("", head).strip(" ,")
+    base = base if len(base) >= 6 else head
+    return f"{base}, 과연 어떻게 됐을까?"
 
 
 def pick_headline(script: Dict[str, Any]) -> str:
@@ -156,11 +168,34 @@ def _text(d, xy, text, font, fill, sw, shadow=None):
     d.text(xy, text, font=font, fill=fill, stroke_width=sw, stroke_fill=BLACK, anchor="mm")
 
 
+def _word_fit(d, text: str, sizes, max_w: int, max_lines: int):
+    """단어(공백) 경계로만 줄을 나눠 max_lines 안에 들어가는 가장 큰 글자 크기를 고른다. 안 되면 None(글자 단위 폴백)."""
+    words = text.strip().split()
+    for size in sizes:
+        font = _font(size)
+        lines, cur = [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if d.textlength(trial, font=font) <= max_w:
+                cur = trial
+            else:
+                if not cur or d.textlength(w, font=font) > max_w:
+                    lines = None
+                    break
+                lines.append(cur)
+                cur = w
+        if lines is not None:
+            lines.append(cur)
+            if len(lines) <= max_lines:
+                return size, font, lines
+    return None
+
+
 def _text_block(d, cx: int, cy: int, text: str, sizes, max_w: int, max_lines: int, fill, sw: int, shadow=None, gap: float = 1.12, single_min: int = 0) -> int:
     """text 를 크기 자동 축소로 맞춰 cy 를 중심으로 쌓아 그린다. 블록 높이를 돌려준다."""
     from render_webtoon import _fit_lines
     one = _fit_lines(d, text, _font, [s for s in sizes if s >= single_min], max_w, 1, truncate=False) if single_min else None
-    size, font, lines = one or _fit(d, text, sizes, max_w, max_lines)
+    size, font, lines = one or _word_fit(d, text, sizes, max_w, max_lines) or _fit(d, text, sizes, max_w, max_lines)
     if len(lines) == 2 and " " in text.strip():       # 2줄이면 공백 기준으로 균형 있게 나눠 한 글자 고아줄을 막는다
         words = text.strip().split(" ")
         best = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
@@ -199,24 +234,22 @@ def _action_overlay(base: Image.Image, center, r: int, text: str, seed: str, fon
 
 
 # ------------------------------------------------------------------ 레이아웃
-def compose_vertical(cut5: Image.Image, script: Dict[str, Any], action: str, boxes=()) -> Image.Image:
+def compose_teaser(cut5: Image.Image, script: Dict[str, Any], action: str, boxes=()) -> Image.Image:
+    """콜드 오픈 0초 프레임 = 세로 썸네일(1080x1920). 컷 5 원본 + 예고형 타이틀 + 호기심 문구 + 효과음. 하단 여백은 비워 둔다."""
     W, H = 1080, 1920
     im = _cover(cut5.convert("RGB"), (W, H)).convert("RGBA")
     im.alpha_composite(_gradient((W, H), 0, 820, 175, 0))
-    im.alpha_composite(_gradient((W, H), 1180, H, 0, 185))
-    cands = [(fx, fy) for fy in (0.345, 0.43, 0.52, 0.61) for fx in (0.78, 0.2, 0.5)]    # 헤드라인 아래~펀치라인 위
+    cands = [(fx, fy) for fy in (0.43, 0.52, 0.61, 0.70) for fx in (0.78, 0.2, 0.5)]    # 문구 아래~하단 UI(75%) 위
     fx, fy = _free_spot(cands, 150 / W, 150 / H, boxes)
     im = _action_overlay(im, (int(fx * W), int(fy * H)), 150, action, str(script.get("episode_id")), 92)
     d = ImageDraw.Draw(im)
-    # 상단 12% 이하 안전 영역에서 시작: 상황 요약(1열) → 도파민 키워드(2열)
-    _text_block(d, W // 2, 300, pick_headline(script), list(range(68, 47, -4)), 960, 2, WHITE, 8)
-    _text_block(d, W // 2, 470, pick_keyword(script), list(range(150, 83, -6)), 980, 1, WHITE, 14, shadow=(10, 12, RED))
-    # 하단: 펀치라인(렌더러 자막과 같은 x 100~880, 하단 28% 높이)
-    _text_block(d, 490, 1380, pick_punchline(script), list(range(92, 55, -4)), 780, 2, YELLOW, 11)
+    # 상단 12% 이하 안전 영역에서 시작: 도파민 타이틀(1열) → 호기심 문구(2열)
+    _text_block(d, W // 2, 320, pick_keyword(script), list(range(150, 83, -6)), 980, 1, WHITE, 14, shadow=(10, 12, RED))
+    _text_block(d, W // 2, 490, pick_curiosity(script), list(range(66, 47, -4)), 940, 2, WHITE, 8)
     return im.convert("RGB")
 
 
-def compose_landscape(cut5: Image.Image, script: Dict[str, Any], action: str, boxes=()) -> Image.Image:
+def compose_teaser_landscape(cut5: Image.Image, script: Dict[str, Any], action: str, boxes=()) -> Image.Image:
     W, H = 1280, 720
     cut = cut5.convert("RGB")
     back = _cover(cut, (W, H)).filter(ImageFilter.GaussianBlur(16)).convert("RGBA")
@@ -232,9 +265,8 @@ def compose_landscape(cut5: Image.Image, script: Dict[str, Any], action: str, bo
     fx, fy = _free_spot([(0.8, 0.2), (0.2, 0.2), (0.8, 0.8), (0.2, 0.8), (0.5, 0.12)], 120 / 640, 120 / 720, pb)
     back = _action_overlay(back, (W - 640 + int(fx * 640), int(fy * 720)), 120, action, str(script.get("episode_id")), 64)
     d = ImageDraw.Draw(back)
-    _text_block(d, 330, 140, pick_headline(script), list(range(54, 35, -3)), 560, 2, WHITE, 6)
-    _text_block(d, 330, 330, pick_keyword(script), list(range(110, 59, -5)), 580, 2, WHITE, 10, shadow=(7, 8, RED), single_min=64)
-    _text_block(d, 330, 590, pick_punchline(script), list(range(62, 39, -3)), 560, 2, YELLOW, 8)
+    _text_block(d, 330, 250, pick_keyword(script), list(range(110, 59, -5)), 580, 2, WHITE, 10, shadow=(7, 8, RED), single_min=64)
+    _text_block(d, 330, 470, pick_curiosity(script), list(range(54, 35, -3)), 560, 3, WHITE, 6)
     return back.convert("RGB")
 
 
@@ -263,8 +295,8 @@ def make_thumbnails(script: Any, out_dir: Path = THUMB_DIR, cut5_path: Optional[
     cut5 = Image.open(cut5_path)
     action = pick_action_text(s, _shot5_word(ep_dir))
     boxes = _subject_boxes(ep_dir)
-    vertical = _save(compose_vertical(cut5, s, action, boxes), out_dir / f"{ep}_thumbnail")
-    landscape = _save(compose_landscape(cut5, s, action, boxes), out_dir / f"{ep}_thumbnail_16x9")
+    vertical = _save(compose_teaser(cut5, s, action, boxes), out_dir / f"{ep}_thumbnail")
+    landscape = _save(compose_teaser_landscape(cut5, s, action, boxes), out_dir / f"{ep}_thumbnail_16x9")
     return {"episode_id": ep, "vertical_png": vertical[0], "vertical_jpg": vertical[1],
             "landscape_png": landscape[0], "landscape_jpg": landscape[1],
-            "headline": pick_headline(s), "keyword": pick_keyword(s), "punchline": pick_punchline(s), "action": action}
+            "keyword": pick_keyword(s), "curiosity": pick_curiosity(s), "action": action}

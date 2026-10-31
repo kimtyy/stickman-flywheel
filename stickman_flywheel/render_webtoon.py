@@ -557,17 +557,29 @@ def render_webtoon(script, *, audio_plan=None, suffix: str = "", redo_sheets: bo
             audio_path = out / "master_bgm.wav"
             mix_bgm_with_auto_ducking(master_audio_path=audio.master_wav(), bgm_path=bp, output_path=audio_path,
                                       bgm_volume=0.15, vocal_pocketing=True)
+    # 콜드 오픈: 영상은 인트로 프레임을, 오디오는 같은 길이의 효과음/무음을 앞에 붙인다(BGM/TTS 는 인트로 직후부터 시작)
+    from cold_open import ColdOpen, entry_effect
+    co = ColdOpen.prepare(script, FPS, log=lambda m: print(m, flush=True))
+    if co:
+        audio_path = co.with_audio(audio_path, out / "master_cold.wav")
+        print(f"[Webtoon] 콜드 오픈 {co.n}프레임({co.sec:.2f}s) + 오디오 오프셋", flush=True)
     cmd = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
            "-i", str(audio_path), "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", str(part)]
     t1 = time.time()
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if co:
+        for fr in co.frames():
+            proc.stdin.write(fr.tobytes())
     for i, sc in enumerate(script.scenes):
         a = audio.scenes[i]
         cp = CutPainter(cuts[i], shots.get(sc.scene_number) or sl.shots[i], sc, a.timeline, a.dur, a.hit_t, script.episode_title,
                         focus=focus_from(checks.get(i)))
         for f in range(cp.n):
-            proc.stdin.write(cp.frame(f).tobytes())
+            fr = cp.frame(f)
+            if co and i == 0:
+                fr = entry_effect(fr, f)           # 인트로 → 컷 1 글리치/화이트 플래시 전환
+            proc.stdin.write(fr.tobytes())
         print(f"[Webtoon] 컷 {i + 1} 합성 {cp.n}프레임", flush=True)
     proc.stdin.close()
     if proc.wait() != 0 or not part.exists():
@@ -593,7 +605,8 @@ def render_webtoon(script, *, audio_plan=None, suffix: str = "", redo_sheets: bo
         print(f"[Score] 채점 생략: {e}", flush=True)
     summary = {"path": str(dst), "image_stage_sec": round(t_img), "cut_reports": report,
                "vlm_pass": f"{ok}/{len(sc_list.scores)}" if sc_list else None,
-               "needs_review": [k for k, v in report.items() if v.get("final_issue")]}
+               "needs_review": [k for k, v in report.items() if v.get("final_issue")],
+               "cold_open_sec": co.sec if co else 0}
     atomic_write_json(out / "report.json", summary)
     print(f"DONE {dst} (이미지 {t_img:.0f}s)", flush=True)
     return WebtoonResult(dst, summary)

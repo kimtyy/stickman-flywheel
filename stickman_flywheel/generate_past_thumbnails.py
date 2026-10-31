@@ -40,7 +40,7 @@ def run(episode_ids: Optional[List[str]] = None, out_dir: Path = PAST_THUMB_DIR)
             continue
         try:
             r = make_thumbnails(json.loads(sp.read_text(encoding="utf-8")), out_dir)
-            done.append(f"{ep}: [{r['keyword']}] {r['headline']} / {r['punchline']}")
+            done.append(f"{ep}: [{r['keyword']}] {r['curiosity']}")
         except Exception as e:
             skipped.append(f"{ep}({type(e).__name__}: {e})")
     msg = f"썸네일 {len(done)}편 생성 -> {out_dir}"

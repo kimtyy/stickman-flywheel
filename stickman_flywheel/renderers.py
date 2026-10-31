@@ -36,7 +36,7 @@ def render_with(name: str, script, bgm_path=None) -> Tuple[Path, Dict[str, Any]]
         from render_webtoon import render_webtoon
         res = render_webtoon(script, audio_plan=build_audio_plan(script), bgm_path=bgm_path)
         return res.path, {"renderer": "webtoon", "vlm_pass": res.report.get("vlm_pass"),
-                          "needs_review": res.report.get("needs_review")}
+                          "needs_review": res.report.get("needs_review"), "cold_open_sec": res.report.get("cold_open_sec", 0)}
     if name == "stage":
         from render_stage import render_stage
         return Path(render_stage(script, suffix="", bgm_path=bgm_path)), {"renderer": "stage"}
