@@ -306,6 +306,25 @@ class YouTubeUploader:
             }
 
 
+def set_thumbnail(video_id: str, image_path: Path) -> Dict[str, Any]:
+    """업로드된 영상에 커스텀 썸네일 적용(thumbnails.set). JPEG/PNG 2MB 이하만 허용된다. 실패는 failed 로 반환."""
+    image_path = Path(image_path)
+    try:
+        if not image_path.exists():
+            raise FileNotFoundError(f"썸네일 파일 없음: {image_path}")
+        if image_path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("썸네일이 2MB 를 넘습니다")
+        up = YouTubeUploader()
+        if up.dry_run or not up.service:
+            return {"status": "simulated", "video_id": video_id}
+        from googleapiclient.http import MediaFileUpload
+        mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
+        up.service.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(str(image_path), mimetype=mime)).execute()
+        return {"status": "success", "video_id": video_id}
+    except Exception as e:
+        return {"status": "failed", "video_id": video_id, "error": f"{type(e).__name__}: {e}"}
+
+
 def run_pipeline_step4(
     script: StickmanScriptOutput,
     video_path: Optional[Path] = None,

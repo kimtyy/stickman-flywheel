@@ -8,6 +8,7 @@
 대시보드는 이 데몬이 기록하는 daemon_status.json 과 golden_time_queue.json 을 읽기만 한다.
 """
 import argparse
+import json
 import os
 import sys
 import threading
@@ -162,7 +163,7 @@ def _render_one(item: Dict[str, Any]) -> str:
     finally:
         _write_status(rendering_episode=None)
     update_golden_queue_item(ep_id, status="ready_to_publish", video_path=str(path), last_error=None,
-                             rendered_by=info.get("renderer"), render_info=info)
+                             rendered_by=info.get("renderer"), render_info=info, **_make_thumbnail(ep_id))
     extra = f" [{info.get('renderer')}" + (f", VLM {info['vlm_pass']}" if info.get("vlm_pass") else "") + \
             (f", 검수 필요 컷 {info['needs_review']}" if info.get("needs_review") else "") + \
             (", 폴백 사용" if info.get("fallback_from") else "") + "]"
@@ -184,15 +185,49 @@ def step_render() -> str:
     return "; ".join(done) or "렌더 대상 없음"
 
 
+UPLOAD_SETTINGS_PATH = BASE_DIR / "config" / "upload_settings.json"
+
+
+def _upload_settings() -> Dict[str, Any]:
+    """업로드 기본 설정. config/upload_settings.json 을 매번 읽어 데몬 재시작 없이 바뀐다(환경변수 UPLOAD_PRIVACY 가 우선).
+    privacy 는 private | unlisted 만 허용하고 그 외 값은 private 으로 강제한다(module4.safe_privacy). 공개 전환은 사람이 직접 한다."""
+    from module4_uploader import safe_privacy
+    cfg: Dict[str, Any] = {}
+    try:
+        cfg = json.loads(UPLOAD_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    return {"privacy": safe_privacy(os.getenv("UPLOAD_PRIVACY") or cfg.get("privacy")),
+            "auto_thumbnail_upload": bool(cfg.get("auto_thumbnail_upload", False))}
+
+
+def _make_thumbnail(ep_id: str) -> Dict[str, Any]:
+    """렌더 직후 썸네일 세트(세로/가로 x PNG/JPG)를 pipeline_outputs/thumbnails 에 만든다. 실패해도 예외를 던지지 않는다."""
+    try:
+        from thumbnail_maker import make_thumbnails
+        r = make_thumbnails(json.loads((APPROVED_DIR / f"{ep_id}.json").read_text(encoding="utf-8")))
+        return {"thumbnail_png": str(r["vertical_png"]), "thumbnail_jpg": str(r["vertical_jpg"]),
+                "thumbnail_16x9_jpg": str(r["landscape_jpg"])}
+    except Exception as e:
+        _log(f"썸네일 생성 실패({ep_id}): {type(e).__name__}: {e}")
+        return {}
+
+
+def step_make_thumbnail(ep_id: str = "") -> str:
+    from generate_past_thumbnails import run
+    return run([ep_id] if ep_id and ep_id != "ALL" else None)
+
+
 def _publish_one(item: Dict[str, Any]) -> str:
     from module4_uploader import run_pipeline_step4
     ep_id = item["episode_id"]
     video = Path(item.get("video_path") or RENDERED_DIR / f"{ep_id}.mp4")
     attempts = int(item.get("attempts", 0)) + 1
     update_golden_queue_item(ep_id, status="uploading", attempts=attempts)
+    settings = _upload_settings()
     try:
         res = run_pipeline_step4(load_script(APPROVED_DIR / f"{ep_id}.json"), video_path=video,
-                                 privacy_status="private")
+                                 privacy_status=settings["privacy"])
     except Exception as e:  # 파일 없음 등 사전 오류
         res = {"status": "failed", "message": str(e), "error": f"{type(e).__name__}: {e}"}
 
@@ -200,7 +235,15 @@ def _publish_one(item: Dict[str, Any]) -> str:
         update_golden_queue_item(ep_id, status="published", video_id=res["video_id"],
                                  video_url=res["video_url"], published_at=datetime.now().isoformat(),
                                  last_error=None)
-        return f"{ep_id}: 업로드 성공 {res['video_url']}"
+        thumb_note = ""
+        if settings["auto_thumbnail_upload"] and item.get("thumbnail_jpg"):
+            try:
+                from module4_uploader import set_thumbnail
+                tr = set_thumbnail(res["video_id"], Path(item["thumbnail_jpg"]))
+                thumb_note = f" | 썸네일 {'적용' if tr['status'] == 'success' else '실패: ' + str(tr.get('error'))}"
+            except Exception as e:  # 썸네일 실패가 업로드 성공 판정을 바꾸지 않는다
+                thumb_note = f" | 썸네일 실패: {type(e).__name__}: {e}"
+        return f"{ep_id}: 업로드 성공({res.get('privacy_status')}) {res['video_url']}{thumb_note}"
     if res["status"] == "simulated":  # 인증 미설정 Dry-Run: 실제 발행이 아니므로 별도 상태로 구분
         update_golden_queue_item(ep_id, status="simulated_dry_run", video_id=res.get("video_id"),
                                  last_error="YouTube 인증 미설정(Dry-Run) — 실제 업로드되지 않음")
@@ -317,9 +360,14 @@ def main() -> int:
     ap.add_argument("--run", choices=sorted(JOBS), help="지정 작업 1회 실행 후 종료")
     ap.add_argument("--renderer", choices=("webtoon", "stage", "legacy"),
                     help="이 데몬 프로세스의 렌더러(기본 webtoon, 환경변수 DAEMON_RENDERER 로도 지정 가능)")
+    ap.add_argument("--make-thumbnail", nargs="?", const="ALL", metavar="EPISODE_ID",
+                    help="후킹 썸네일을 만들고 종료(ID 생략 시 컷 이미지가 있는 전체 에피소드) -> pipeline_outputs/past_thumbnails")
     args = ap.parse_args()
     if args.renderer:
         os.environ["DAEMON_RENDERER"] = args.renderer
+    if args.make_thumbnail:
+        print(step_make_thumbnail(args.make_thumbnail))
+        return 0
 
     if args.once or args.run:
         name = args.run or "tick"
